@@ -74,6 +74,7 @@ menu = st.sidebar.radio("Pilih Menu", [
     "Presensi Harian & Non-Borongan",
     "Master Karyawan",
     "Kasbon Karyawan",
+    "Stok Bahan & Kemasan"
     "Data & Edit Log", 
     "Rekap & Ekspor Excel", 
     "Cetak Struk Termal"
@@ -211,7 +212,67 @@ if menu == "Input Bungkusan Borongan":
                     supabase.table("LogHarian").insert(data_tim_to_insert).execute()
                     st.success(f"Berhasil menyimpan hasil tim untuk {jumlah_anggota} anggota!")
                     st.rerun()
+# ----------------------------------------------------
+# PADA MENU: Input Bungkusan Borongan
+# ----------------------------------------------------
 
+if btn_simpan_borongan:
+    try:
+        # 1. Simpan Transaksi Log Borongan (Kode Lama)
+        payload_borongan = {
+            "tanggal": str(tgl_borongan),
+            "nama_karyawan": nama_borongan,
+            "sistem_gaji": "Borongan",
+            "jenis_produk": jenis_produk,
+            "ukuran_bal": ukuran_bal,
+            "jumlah_borongan": float(jumlah_bal),
+            "upah_per_bal": float(tarif_bal),
+            "total_gaji": float(total_upah)
+        }
+        supabase.table("LogHarian").insert(payload_borongan).execute()
+        
+        # ----------------------------------------------------
+        # FITUR BOM (BILL OF MATERIALS) - POTONG MULTI STOK
+        # ----------------------------------------------------
+        jml_bal = float(jumlah_bal)
+        
+        # Resep Komposisi Kemasan per 1 Bal
+        kebutuhan_kemasan = [
+            {"kata_kunci": "Bungkus Makaroni 18g", "jumlah_per_bal": 120 * jml_bal, "satuan": "Pcs"},
+            {"kata_kunci": "Bungkus Pack", "jumlah_per_bal": 10 * jml_bal, "satuan": "Pcs"},
+            {"kata_kunci": "Bungkus Bal", "jumlah_per_bal": 1 * jml_bal, "satuan": "Pcs"}
+        ]
+        
+        res_stok_all = supabase.table("StokBahan").select("*").execute()
+        data_stok_db = res_stok_all.data if res_stok_all.data else []
+        
+        for item_resep in kebutuhan_kemasan:
+            # Cari item di database yang namanya cocok dengan kata kunci resep
+            match_bahan = next((b for b in data_stok_db if item_resep["kata_kunci"].lower() in b["nama_bahan"].lower()), None)
+            
+            if match_bahan:
+                stok_lama = float(match_bahan["stok_saat_ini"])
+                pemakaian = float(item_resep["jumlah_per_bal"])
+                stok_baru = stok_lama - pemakaian
+                
+                # 1. Update sisa stok baru
+                supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", match_bahan["id"]).execute()
+                
+                # 2. Catat Log Keluar Kemasan
+                payload_log_stok = {
+                    "tanggal": str(tgl_borongan),
+                    "nama_bahan": match_bahan["nama_bahan"],
+                    "jenis_transaksi": "Keluar (Produksi/Rusak)",
+                    "jumlah": pemakaian,
+                    "keterangan": f"Pemakaian Otomatis ({jml_bal:.0f} Bal {jenis_produk} oleh {nama_borongan})"
+                }
+                supabase.table("LogStok").insert(payload_log_stok).execute()
+        
+        st.success(f"✅ Borongan berhasil disimpan! Stok 120 Pcs Bungkus Kecil, 10 Pcs Pack, dan 1 Pcs Bal untuk {jml_bal:.0f} Bal otomatis berkurang.")
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Gagal menyimpan transaksi: {e}")
 # ----------------------------------------------------
 # MENU 2: PRESENSI HARIAN & NON-BORONGAN
 # ----------------------------------------------------
@@ -372,9 +433,149 @@ elif menu == "Kasbon Karyawan":
                         st.error(f"Gagal menghapus: {e}")
             else:
                 st.info("Belum ada riwayat transaksi kasbon.")
-
 # ----------------------------------------------------
-# MENU 4: MASTER KARYAWAN
+# MENU 4: STOK BAHAN BAKU & KEMASAN
+# ----------------------------------------------------
+elif menu == "Stok Bahan & Kemasan":
+    st.subheader("📦 Manajemen Stok Bahan Baku & Kemasan")
+    
+    # Fungsi Ambil Data Stok
+    res_stok = supabase.table("StokBahan").select("*").order("nama_bahan").execute()
+    data_stok = res_stok.data if res_stok.data else []
+    
+    tab1, tab2, tab3 = st.tabs(["📊 Ringkasan Stok", "➕ Transaksi Stok (Masuk/Keluar)", "⚙️ Tambah / Edit Master Bahan"])
+    
+    # ------------------------------------------------
+    # TAB 1: RINGKASAN STOK & WARNING STOK MINIMUM
+    # ------------------------------------------------
+    with tab1:
+        st.markdown("##### 📌 Status Stok Bahan Baku & Kemasan Saat Ini")
+        
+        if data_stok:
+            df_stok = pd.DataFrame(data_stok)
+            
+            # Cek Peringatan Stok Tipis
+            stok_tipis = df_stok[df_stok["stok_saat_ini"] <= df_stok["stok_minimum"]]
+            if not stok_tipis.empty:
+                st.warning("⚠️ **PERINGATAN: Bahan/Kemasan Berikut Sudah Hampir Habis!**")
+                for _, row in stok_tipis.iterrows():
+                    st.write(f"- 🔴 **{row['nama_bahan']}**: Sisa **{row['stok_saat_ini']:,.0f} {row['satuan']}** (Min: {row['stok_minimum']} {row['satuan']})")
+                st.divider()
+
+            # Format Tampilan Tabel
+            df_tampil = df_stok[["nama_bahan", "kategori", "stok_saat_ini", "satuan", "stok_minimum"]].copy()
+            df_tampil.columns = ["Nama Bahan / Kemasan", "Kategori", "Stok Saat Ini", "Satuan", "Stok Minimum"]
+            st.dataframe(df_tampil, use_container_width=True)
+        else:
+            st.info("Belum ada data bahan/kemasan. Silakan tambahkan di tab 'Tambah / Edit Master Bahan'.")
+
+    # ------------------------------------------------
+    # TAB 2: INPUT TRANSAKSI MASUK / KELUAR
+    # ------------------------------------------------
+    with tab2:
+        st.markdown("##### 📝 Pencatatan Stok Masuk (Pembelian) atau Keluar (Produksi/Rusak)")
+        
+        if data_stok:
+            list_nama_bahan = [b["nama_bahan"] for b in data_stok]
+            
+            with st.form("form_trx_stok", clear_on_submit=True):
+                tgl_trx = st.date_input("Tanggal Transaksi", value=datetime.today())
+                bahan_terpilih = st.selectbox("Pilih Bahan / Kemasan", list_nama_bahan)
+                jenis_trx = st.selectbox("Jenis Transaksi", ["Masuk (Pembelian)", "Keluar (Produksi/Rusak)"])
+                jumlah_trx = st.number_input("Jumlah Ops", min_value=0.1, step=1.0, value=10.0)
+                ket_trx = st.text_input("Keterangan / Beli Di Mana / Digunakan Untuk", value="Pembelian Rutin")
+                
+                btn_simpan_trx = st.form_submit_button("💾 Simpan Transaksi Stok", type="primary")
+                
+                if btn_simpan_trx:
+                    try:
+                        # Cari data bahan
+                        item_bahan = next(b for b in data_stok if b["nama_bahan"] == bahan_terpilih)
+                        stok_lama = float(item_bahan["stok_saat_ini"])
+                        
+                        # Hitung Stok Baru
+                        if jenis_trx == "Masuk (Pembelian)":
+                            stok_baru = stok_lama + float(jumlah_trx)
+                        else:
+                            stok_baru = stok_lama - float(jumlah_trx)
+                        
+                        # 1. Update Stok di Supabase
+                        supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", item_bahan["id"]).execute()
+                        
+                        # 2. Catat Log Transaksi
+                        payload_log = {
+                            "tanggal": str(tgl_trx),
+                            "nama_bahan": bahan_terpilih,
+                            "jenis_transaksi": jenis_trx,
+                            "jumlah": float(jumlah_trx),
+                            "keterangan": ket_trx
+                        }
+                        supabase.table("LogStok").insert(payload_log).execute()
+                        
+                        st.success(f"✅ Berhasil! Stok {bahan_terpilih} sekarang: {stok_baru:,.1f} {item_bahan['satuan']}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal memperbarui stok: {e}")
+                        
+            st.divider()
+            st.markdown("##### 📋 Riwayat 15 Transaksi Stok Terakhir")
+            res_log_stok = supabase.table("LogStok").select("*").order("id", desc=True).limit(15).execute()
+            if res_log_stok.data:
+                st.dataframe(pd.DataFrame(res_log_stok.data)[["tanggal", "nama_bahan", "jenis_transaksi", "jumlah", "keterangan"]], use_container_width=True)
+        else:
+            st.warning("Tambahkan bahan/kemasan terlebih dahulu di tab sebelah.")
+
+    # ------------------------------------------------
+    # TAB 3: MASTER BAHAN & KEMASAN
+    # ------------------------------------------------
+    with tab3:
+        col_m1, col_m2 = st.columns([1, 1])
+        
+        with col_m1:
+            st.markdown("##### ➕ Tambah Item Bahan / Kemasan Baru")
+            with st.form("form_master_bahan", clear_on_submit=True):
+                nama_b_baru = st.text_input("Nama Bahan / Kemasan", placeholder="Contoh: Plastik Bal 18g, Bumbu Bawang, dll")
+                kat_b_baru = st.selectbox("Kategori", ["Kemasan/Plastik", "Bahan Baku Mentah", "Bumbu & Minyak", "Lain-Lain"])
+                stok_awal = st.number_input("Stok Awal Saat Ini", min_value=0.0, step=1.0, value=0.0)
+                satuan_b = st.selectbox("Satuan", ["Kg", "Bal", "Roll", "Pcs", "Lbr", "Liter"])
+                stok_min = st.number_input("Batas Stok Minimum (Warning)", min_value=1.0, step=1.0, value=10.0)
+                
+                btn_simpan_master = st.form_submit_button("➕ Simpan Bahan Baru", type="primary")
+                
+                if btn_simpan_master:
+                    if nama_b_baru.strip() == "":
+                        st.error("Nama bahan tidak boleh kosong!")
+                    else:
+                        try:
+                            payload_master = {
+                                "nama_bahan": nama_b_baru.strip(),
+                                "kategori": kat_b_baru,
+                                "stok_saat_ini": float(stok_awal),
+                                "satuan": satuan_b,
+                                "stok_minimum": float(stok_min)
+                            }
+                            supabase.table("StokBahan").insert(payload_master).execute()
+                            st.success(f"✅ Item '{nama_b_baru}' berhasil ditambahkan!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menyimpan: {e}")
+
+        with col_m2:
+            st.markdown("##### 🗑️ Hapus Item Master Bahan")
+            if data_stok:
+                with st.form("form_hapus_bahan"):
+                    item_hapus = st.selectbox("Pilih Bahan yang Akan Dihapus", [b["nama_bahan"] for b in data_stok])
+                    btn_hapus = st.form_submit_button("🗑️ Hapus Item Master")
+                    
+                    if btn_hapus:
+                        try:
+                            supabase.table("StokBahan").delete().eq("nama_bahan", item_hapus).execute()
+                            st.success(f"Item '{item_hapus}' berhasil dihapus.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menghapus: {e}")
+# ----------------------------------------------------
+# MENU 5: MASTER KARYAWAN
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
@@ -451,7 +652,7 @@ elif menu == "Master Karyawan":
         else:
             st.info("Belum ada data karyawan terdaftar.")
 #----------------------------------------------------
-# MENU 5: DATA & EDIT LOG
+# MENU 6: DATA & EDIT LOG
 # ----------------------------------------------------
 elif menu == "Data & Edit Log":
     st.subheader("📋 Riwayat Data Log Produksi & Edit")
@@ -509,7 +710,7 @@ elif menu == "Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 6: REKAP & EKSPOR EXCEL
+# MENU 7: REKAP & EKSPOR EXCEL
 # ----------------------------------------------------
 elif menu == "Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -628,7 +829,7 @@ elif menu == "Rekap & Ekspor Excel":
                 rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
                 use_container_width=True)
 # ----------------------------------------------------
-# MENU 7: CETAK STRUK TERMAL
+# MENU 8: CETAK STRUK TERMAL
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
