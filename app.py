@@ -67,7 +67,7 @@ if menu == "Input Gaji & Produksi":
                 jenis_produk = st.selectbox("Jenis Produk Bungkusan", DAFTAR_PRODUK)
                 ukuran_bal = st.selectbox("Ukuran Bal", UKURAN_BAL)
                 jumlah_borongan = st.number_input("Jumlah Hasil (Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f")
-                nominal_satuan = st.number_input("Gaji per Ball (Rp)", min_value=0, value=1000, step=500)
+                nominal_satuan = st.number_input("Gaji per Ball (Rp)", min_value=0, value=4000, step=500)
             else:
                 jenis_produk = "-"
                 ukuran_bal = "-"
