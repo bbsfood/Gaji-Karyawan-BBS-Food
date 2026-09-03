@@ -64,11 +64,12 @@ if menu == "Input Gaji Harian":
             
         with col2:
             if sistem_gaji == "Borongan":
-                jumlah_borongan = st.number_input("Jumlah Borongan (Pcs/Ball)", min_value=1, value=1)
+                # Menggunakan step=0.5 dan format desimal (%.1f)
+                jumlah_borongan = st.number_input("Jumlah Borongan (Pcs/Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f")
                 nominal_satuan = st.number_input("Gaji per Borongan (Rp)", min_value=0, value=1000, step=500)
                 total_gaji = jumlah_borongan * nominal_satuan
             else:
-                jumlah_borongan = st.number_input("Jumlah Hari Masuk", min_value=1, value=1)
+                jumlah_borongan = st.number_input("Jumlah Hari Masuk", min_value=0.5, value=1.0, step=0.5, format="%.1f")
                 nominal_satuan = st.number_input("Gaji Per Hari (Rp)", min_value=0, value=50000, step=5000)
                 total_gaji = jumlah_borongan * nominal_satuan
                 
@@ -83,7 +84,7 @@ if menu == "Input Gaji Harian":
                     "nama_karyawan": nama_karyawan.strip().title(),
                     "tanggal": str(tanggal_masuk),
                     "sistem_gaji": sistem_gaji,
-                    "jumlah_borongan": int(jumlah_borongan),
+                    "jumlah_borongan": float(jumlah_borongan),  # Menggunakan float agar bisa simpan desimal
                     "nominal_satuan": int(nominal_satuan),
                     "total_gaji": int(total_gaji)
                 }
@@ -124,7 +125,7 @@ elif menu == "Data & Edit Log":
                 with st.form("form_edit"):
                     edit_nama = st.text_input("Nama", value=curr["nama_karyawan"])
                     edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=0 if curr.get("sistem_gaji") == "Borongan" else 1)
-                    edit_jumlah = st.number_input("Jumlah Borongan / Hari", value=curr["jumlah_borongan"])
+                    edit_jumlah = st.number_input("Jumlah Borongan / Hari", value=float(curr["jumlah_borongan"]), step=0.5, format="%.1f")
                     edit_nominal = st.number_input("Nominal Satuan (Rp)", value=curr.get("nominal_satuan", 0))
                     
                     if st.form_submit_button("Update Data"):
