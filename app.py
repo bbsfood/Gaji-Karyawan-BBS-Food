@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 from supabase import create_client, Client
 from datetime import datetime
 import calendar
@@ -452,19 +453,24 @@ elif menu == "Kasbon Karyawan":
             else:
                 st.info("Belum ada riwayat transaksi kasbon.")
 # ----------------------------------------------------
-# MENU 4: STOK BAHAN BAKU & KEMASAN
+# ----------------------------------------------------
+# MENU: STOK BAHAN BAKU & KEMASAN
 # ----------------------------------------------------
 elif menu == "Stok Bahan & Kemasan":
     st.subheader("📦 Manajemen Stok Bahan Baku & Kemasan")
     
-    # Fungsi Ambil Data Stok
-    res_stok = supabase.table("StokBahan").select("*").order("nama_bahan").execute()
-    data_stok = res_stok.data if res_stok.data else []
-    
+    # Ambil data dari Supabase secara aman
+    try:
+        res_stok = supabase.table("StokBahan").select("*").order("nama_bahan").execute()
+        data_stok = res_stok.data if res_stok.data else []
+    except Exception as e:
+        data_stok = []
+        st.error(f"⚠️ Gagal terhubung ke tabel 'StokBahan'. Pastikan tabel sudah dibuat di Supabase. Error: {e}")
+
     tab1, tab2, tab3 = st.tabs(["📊 Ringkasan Stok", "➕ Transaksi Stok (Masuk/Keluar)", "⚙️ Tambah / Edit Master Bahan"])
     
     # ------------------------------------------------
-    # TAB 1: RINGKASAN STOK & WARNING STOK MINIMUM
+    # TAB 1: RINGKASAN STOK
     # ------------------------------------------------
     with tab1:
         st.markdown("##### 📌 Status Stok Bahan Baku & Kemasan Saat Ini")
@@ -472,7 +478,7 @@ elif menu == "Stok Bahan & Kemasan":
         if data_stok:
             df_stok = pd.DataFrame(data_stok)
             
-            # Cek Peringatan Stok Tipis
+            # Peringatan jika ada stok di bawah batas minimum
             stok_tipis = df_stok[df_stok["stok_saat_ini"] <= df_stok["stok_minimum"]]
             if not stok_tipis.empty:
                 st.warning("⚠️ **PERINGATAN: Bahan/Kemasan Berikut Sudah Hampir Habis!**")
@@ -480,18 +486,17 @@ elif menu == "Stok Bahan & Kemasan":
                     st.write(f"- 🔴 **{row['nama_bahan']}**: Sisa **{row['stok_saat_ini']:,.0f} {row['satuan']}** (Min: {row['stok_minimum']} {row['satuan']})")
                 st.divider()
 
-            # Format Tampilan Tabel
             df_tampil = df_stok[["nama_bahan", "kategori", "stok_saat_ini", "satuan", "stok_minimum"]].copy()
             df_tampil.columns = ["Nama Bahan / Kemasan", "Kategori", "Stok Saat Ini", "Satuan", "Stok Minimum"]
             st.dataframe(df_tampil, use_container_width=True)
         else:
-            st.info("Belum ada data bahan/kemasan. Silakan tambahkan di tab 'Tambah / Edit Master Bahan'.")
+            st.info("ℹ️ Belum ada data bahan/kemasan. Silakan tambahkan item baru pada tab **'⚙️ Tambah / Edit Master Bahan'** di atas.")
 
     # ------------------------------------------------
-    # TAB 2: INPUT TRANSAKSI MASUK / KELUAR
+    # TAB 2: TRANSAKSI STOK (MASUK/KELUAR)
     # ------------------------------------------------
     with tab2:
-        st.markdown("##### 📝 Pencatatan Stok Masuk (Pembelian) atau Keluar (Produksi/Rusak)")
+        st.markdown("##### 📝 Pencatatan Stok Masuk (Pembelian) atau Keluar")
         
         if data_stok:
             list_nama_bahan = [b["nama_bahan"] for b in data_stok]
@@ -500,27 +505,19 @@ elif menu == "Stok Bahan & Kemasan":
                 tgl_trx = st.date_input("Tanggal Transaksi", value=datetime.today())
                 bahan_terpilih = st.selectbox("Pilih Bahan / Kemasan", list_nama_bahan)
                 jenis_trx = st.selectbox("Jenis Transaksi", ["Masuk (Pembelian)", "Keluar (Produksi/Rusak)"])
-                jumlah_trx = st.number_input("Jumlah Ops", min_value=0.1, step=1.0, value=10.0)
-                ket_trx = st.text_input("Keterangan / Beli Di Mana / Digunakan Untuk", value="Pembelian Rutin")
+                jumlah_trx = st.number_input("Jumlah", min_value=1.0, step=1.0, value=10.0)
+                ket_trx = st.text_input("Keterangan", value="Pembelian Rutin")
                 
                 btn_simpan_trx = st.form_submit_button("💾 Simpan Transaksi Stok", type="primary")
                 
                 if btn_simpan_trx:
                     try:
-                        # Cari data bahan
                         item_bahan = next(b for b in data_stok if b["nama_bahan"] == bahan_terpilih)
                         stok_lama = float(item_bahan["stok_saat_ini"])
+                        stok_baru = (stok_lama + float(jumlah_trx)) if jenis_trx == "Masuk (Pembelian)" else (stok_lama - float(jumlah_trx))
                         
-                        # Hitung Stok Baru
-                        if jenis_trx == "Masuk (Pembelian)":
-                            stok_baru = stok_lama + float(jumlah_trx)
-                        else:
-                            stok_baru = stok_lama - float(jumlah_trx)
-                        
-                        # 1. Update Stok di Supabase
                         supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", item_bahan["id"]).execute()
                         
-                        # 2. Catat Log Transaksi
                         payload_log = {
                             "tanggal": str(tgl_trx),
                             "nama_bahan": bahan_terpilih,
@@ -529,20 +526,62 @@ elif menu == "Stok Bahan & Kemasan":
                             "keterangan": ket_trx
                         }
                         supabase.table("LogStok").insert(payload_log).execute()
-                        
-                        st.success(f"✅ Berhasil! Stok {bahan_terpilih} sekarang: {stok_baru:,.1f} {item_bahan['satuan']}")
+                        st.success(f"✅ Stok {bahan_terpilih} berhasil diperbarui! Sisa: {stok_baru:,.0f} {item_bahan['satuan']}")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Gagal memperbarui stok: {e}")
-                        
-            st.divider()
-            st.markdown("##### 📋 Riwayat 15 Transaksi Stok Terakhir")
-            res_log_stok = supabase.table("LogStok").select("*").order("id", desc=True).limit(15).execute()
-            if res_log_stok.data:
-                st.dataframe(pd.DataFrame(res_log_stok.data)[["tanggal", "nama_bahan", "jenis_transaksi", "jumlah", "keterangan"]], use_container_width=True)
+                        st.error(f"Gagal menyimpan transaksi stok: {e}")
         else:
-            st.warning("Tambahkan bahan/kemasan terlebih dahulu di tab sebelah.")
+            st.warning("⚠️ Tambahkan bahan/kemasan terlebih dahulu di tab **'⚙️ Tambah / Edit Master Bahan'**.")
 
+    # ------------------------------------------------
+    # TAB 3: MASTER BAHAN BARU
+    # ------------------------------------------------
+    with tab3:
+        col_m1, col_m2 = st.columns([1, 1])
+        
+        with col_m1:
+            st.markdown("##### ➕ Tambah Item Bahan / Kemasan Baru")
+            with st.form("form_master_bahan", clear_on_submit=True):
+                nama_b_baru = st.text_input("Nama Bahan / Kemasan", placeholder="Contoh: Bungkus Makaroni 18g")
+                kat_b_baru = st.selectbox("Kategori", ["Kemasan/Plastik", "Bahan Baku Mentah", "Bumbu & Minyak", "Lain-Lain"])
+                stok_awal = st.number_input("Stok Awal Saat Ini", min_value=0.0, step=1.0, value=0.0)
+                satuan_b = st.selectbox("Satuan", ["Pcs", "Kg", "Bal", "Roll", "Lbr", "Liter"])
+                stok_min = st.number_input("Batas Stok Minimum (Warning)", min_value=1.0, step=1.0, value=10.0)
+                
+                btn_simpan_master = st.form_submit_button("➕ Simpan Bahan Baru", type="primary")
+                
+                if btn_simpan_master:
+                    if not nama_b_baru.strip():
+                        st.error("Nama bahan wajib diisi!")
+                    else:
+                        try:
+                            payload_master = {
+                                "nama_bahan": nama_b_baru.strip(),
+                                "kategori": kat_b_baru,
+                                "stok_saat_ini": float(stok_awal),
+                                "satuan": satuan_b,
+                                "stok_minimum": float(stok_min)
+                            }
+                            supabase.table("StokBahan").insert(payload_master).execute()
+                            st.success(f"✅ Item '{nama_b_baru}' berhasil ditambahkan!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menyimpan ke Supabase: {e}")
+
+        with col_m2:
+            st.markdown("##### 🗑️ Hapus Item Master Bahan")
+            if data_stok:
+                with st.form("form_hapus_bahan"):
+                    item_hapus = st.selectbox("Pilih Bahan yang Akan Dihapus", [b["nama_bahan"] for b in data_stok])
+                    btn_hapus = st.form_submit_button("🗑️ Hapus Item Master")
+                    
+                    if btn_hapus:
+                        try:
+                            supabase.table("StokBahan").delete().eq("nama_bahan", item_hapus).execute()
+                            st.success(f"Item '{item_hapus}' berhasil dihapus.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menghapus: {e}")
     # ------------------------------------------------
     # TAB 3: MASTER BAHAN & KEMASAN
     # ------------------------------------------------
