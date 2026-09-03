@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from supabase import create_client, Client
 from datetime import datetime
 import calendar
 import io
 
 # Page Config
-st.set_page_config(page_title="Aplikasi Laporan BBS Food", layout="wide")
+st.set_page_config(page_title="Gaji & Produksi BBS Food", layout="wide")
 
 # CSS khusus Struk Termal 58mm
 st.markdown("""
@@ -48,14 +47,11 @@ DAFTAR_PRODUK = [
 ]
 UKURAN_BAL = ["Isi 10", "Isi 12"]
 
-# Acuan Standard Gaji Bulanan Pabrik
+# Acuan UMR Sragen Bulanan & Fungsi Hari Kerja Efektif (Senin-Sabtu)
 GAJI_BULANAN_KEPALA_REGU = 2500000
 GAJI_BULANAN_ANGGOTA = 2377000
-GAJI_BULANAN_PACKING_ONLINE = 2000000
-GAJI_HARIAN_TETAP_ADMIN = 100000  # Nila (Admin Pabrik)
 
 def get_hari_kerja_efektif(tahun, bulan):
-    """Menghitung jumlah hari kerja efektif (Senin-Sabtu)"""
     _, total_hari = calendar.monthrange(tahun, bulan)
     hari_kerja = 0
     for day in range(1, total_hari + 1):
@@ -72,10 +68,8 @@ def get_karyawan_list():
 # Sidebar Navigasi
 menu = st.sidebar.radio("Pilih Menu", [
     "Input Bungkusan Borongan",
-    "Presensi Harian & Non-Borongan",
+    "Presensi Pemasak Brondong (Harian)",
     "Master Karyawan",
-    "Kasbon Karyawan",
-    "Stok Bahan & Kemasan"
     "Data & Edit Log", 
     "Rekap & Ekspor Excel", 
     "Cetak Struk Termal"
@@ -88,11 +82,10 @@ if menu == "Input Bungkusan Borongan":
     st.subheader("📦 Input Hasil Bungkusan Borongan")
     
     karyawan_data = get_karyawan_list()
-    # Filter karyawan borongan / pembungkus
-    list_nama = [k["nama_karyawan"] for k in karyawan_data if k.get("divisi") == "Pembungkus / Borongan"] or [k["nama_karyawan"] for k in karyawan_data]
+    list_nama = [k["nama_karyawan"] for k in karyawan_data]
     
     if not list_nama:
-        st.warning("⚠️ Belum ada data karyawan borongan. Silakan tambahkan di menu 'Master Karyawan'!")
+        st.warning("⚠️ Belum ada data karyawan. Silakan tambahkan di menu 'Master Karyawan' terlebih dahulu!")
     else:
         tab_ind, tab_tim = st.tabs(["👤 Input Perorangan", "👥 Input Tim / Beregu (Brondong/Snack)"])
 
@@ -118,6 +111,7 @@ if menu == "Input Bungkusan Borongan":
                 with col_i3:
                     item_qty = st.number_input("Jumlah (Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f", key="ind_qty")
                 with col_i4:
+                    # Otomatis tentukan tarif: Brondong = 4500, Lainnya = 4000
                     default_tarif = 4500 if item_produk == "Brondong" else 4000
                     item_nominal = st.number_input("Gaji per Ball (Rp)", min_value=0, value=default_tarif, step=500, key="ind_nom")
                 
@@ -162,7 +156,7 @@ if menu == "Input Bungkusan Borongan":
                         })
                     
                     supabase.table("LogHarian").insert(data_to_insert).execute()
-                    st.success(f"Berhasil menyimpan data borongan untuk {nama_karyawan}!")
+                    st.success(f"Berhasil menyimpan {len(data_to_insert)} item produksi untuk {nama_karyawan}!")
                     st.session_state["items_borongan"] = []
                     st.rerun()
 
@@ -181,6 +175,7 @@ if menu == "Input Bungkusan Borongan":
                 nominal_tim = st.number_input("Gaji per Ball (Rp)", min_value=0, value=default_tarif_tim, step=500, key="tim_nom")
             
             st.divider()
+            
             pilih_anggota = st.multiselect("Pilih Anggota Tim yang Mengerjakan:", list_nama, key="tim_members")
             
             if pilih_anggota:
@@ -211,178 +206,78 @@ if menu == "Input Bungkusan Borongan":
                         })
                     
                     supabase.table("LogHarian").insert(data_tim_to_insert).execute()
-                    st.success(f"Berhasil menyimpan hasil tim untuk {jumlah_anggota} anggota!")
+                    st.success(f"Berhasil menyimpan hasil {produk_tim} untuk {jumlah_anggota} anggota tim!")
                     st.rerun()
-# ----------------------------------------------------
-# MENU 2: INPUT BUNGKUSAN BORONGAN
-# ----------------------------------------------------
-elif menu == "Input Bungkusan Borongan":
-    st.subheader("📦 Input Hasil Bungkusan Borongan")
-    
-    with st.form("form_borongan", clear_on_submit=True):
-        tgl_borongan = st.date_input("Tanggal", value=datetime.today())
-        
-        # Ambil daftar karyawan aktif
-        karyawan_data = get_karyawan_list()
-        list_karyawan_aktif = [k["nama_karyawan"] for k in karyawan_data if k.get("status", "Aktif") == "Aktif"]
-        
-        nama_borongan = st.selectbox("Pilih Karyawan", list_karyawan_aktif)
-        jenis_produk = st.selectbox("Jenis Produk", ["Makaroni", "Stik Bawang", "Seblak", "Kacang Bawang", "Kerupuk"])
-        ukuran_bal = st.selectbox("Ukuran Bal", ["Bal Besar (Isi 12 Pack)", "Bal Sedang", "Bal Kecil"])
-        
-        jumlah_bal = st.number_input("Jumlah Bal", min_value=0.5, step=0.5, value=1.0)
-        tarif_bal = st.number_input("Tarif Upah per Bal (Rp)", min_value=1000, step=500, value=2000)
-        
-        total_upah = jumlah_bal * tarif_bal
-        st.info(f"💰 Total Upah Borongan: **Rp {total_upah:,.0f}**")
-        
-        # 1. DEKLARASIKAN TOMBOL DAHULU (Penting!)
-        btn_simpan_borongan = st.form_submit_button("💾 Simpan Hasil Borongan", type="primary")
 
-    # 2. BARU PROSES LOGIKA DENGAN IF (Luar / Dalam Form)
-    if btn_simpan_borongan:
-        try:
-            # A. Simpan Log Transaksi Borongan ke Supabase
-            payload_borongan = {
-                "tanggal": str(tgl_borongan),
-                "nama_karyawan": nama_borongan,
-                "sistem_gaji": "Borongan",
-                "jenis_produk": jenis_produk,
-                "ukuran_bal": ukuran_bal,
-                "jumlah_borongan": float(jumlah_bal),
-                "upah_per_bal": float(tarif_bal),
-                "total_gaji": float(total_upah)
-            }
-            supabase.table("LogHarian").insert(payload_borongan).execute()
-            
-            # B. Potong Stok Kemasan Otomatis (BOM)
-            jml_bal = float(jumlah_bal)
-            kebutuhan_kemasan = [
-                {"kata_kunci": "Bungkus Makaroni 18g", "jumlah_per_bal": 120 * jml_bal},
-                {"kata_kunci": "Bungkus Pack", "jumlah_per_bal": 10 * jml_bal},
-                {"kata_kunci": "Bungkus Bal", "jumlah_per_bal": 1 * jml_bal}
-            ]
-            
-            res_stok_all = supabase.table("StokBahan").select("*").execute()
-            data_stok_db = res_stok_all.data if res_stok_all.data else []
-            
-            for item_resep in kebutuhan_kemasan:
-                match_bahan = next((b for b in data_stok_db if item_resep["kata_kunci"].lower() in b["nama_bahan"].lower()), None)
-                
-                if match_bahan:
-                    stok_lama = float(match_bahan["stok_saat_ini"])
-                    pemakaian = float(item_resep["jumlah_per_bal"])
-                    stok_baru = stok_lama - pemakaian
-                    
-                    # Update Stok
-                    supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", match_bahan["id"]).execute()
-                    
-                    # Catat Log Stok
-                    payload_log_stok = {
-                        "tanggal": str(tgl_borongan),
-                        "nama_bahan": match_bahan["nama_bahan"],
-                        "jenis_transaksi": "Keluar (Produksi/Rusak)",
-                        "jumlah": pemakaian,
-                        "keterangan": f"Pemakaian Otomatis ({jml_bal:.0f} Bal {jenis_produk} oleh {nama_borongan})"
-                    }
-                    supabase.table("LogStok").insert(payload_log_stok).execute()
-            
-            st.success(f"✅ Data borongan {nama_borongan} berhasil disimpan & Stok Kemasan otomatis dipotong!")
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Gagal menyimpan transaksi: {e}")
 # ----------------------------------------------------
-# MENU 3: PRESENSI HARIAN & NON-BORONGAN
+# MENU 2: PRESENSI PEMASAK BRONDONG (HARIAN)
 # ----------------------------------------------------
-elif menu == "Presensi Harian & Non-Borongan":
-    st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
+elif menu == "Presensi Pemasak Brondong (Harian)":
+    st.subheader("🌽 Presensi & Target Pemasak Brondong (Gaji Harian)")
     
-    tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
-    thn = tgl_presensi.year
-    bln = tgl_presensi.month
+    tgl_pemasak = st.date_input("Tanggal Kerja", value=datetime.today(), key="pemasak_tgl")
     
-    hari_kerja_bln = get_hari_kerja_efektif(thn, bln)
+    if tgl_pemasak.weekday() == 6:
+        st.error("⚠️ Tanggal yang dipilih adalah hari Minggu (Libur Rutin Pabrik).")
     
-    # Hitung standar harian berdasarkan divisi
+    hari_kerja_bln = get_hari_kerja_efektif(tgl_pemasak.year, tgl_pemasak.month)
     gaji_harian_kepala = GAJI_BULANAN_KEPALA_REGU / hari_kerja_bln
     gaji_harian_anggota = GAJI_BULANAN_ANGGOTA / hari_kerja_bln
-    gaji_harian_online = GAJI_BULANAN_PACKING_ONLINE / hari_kerja_bln
+    
+    nama_bln = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                "Juli", "Agustus", "September", "Oktober", "November", "Desember"][tgl_pemasak.month - 1]
+
+    st.caption(f"🗓️ **Periode {nama_bln} {tgl_pemasak.year}:** {hari_kerja_bln} Hari Kerja (Senin–Sabtu)")
+    st.caption(f"💡 **Acuan Harian:** Kepala Regu = Rp {gaji_harian_kepala:,.0f}/hari | Anggota = Rp {gaji_harian_anggota:,.0f}/hari (Target 50 Bal)")
 
     karyawan_data = get_karyawan_list()
-    # Exclude karyawan borongan murni jika diinginkan, atau tampilkan semua
-    harian_karyawan = [k for k in karyawan_data if k.get("divisi") != "Pembungkus / Borongan"] or karyawan_data
+    # Filter karyawan divisi 'Produksi Brondong' atau tampilkan semua jika belum diset
+    pemasak_list = [k for k in karyawan_data if k.get("divisi") == "Produksi Brondong"] or karyawan_data
 
-    if not harian_karyawan:
-        st.warning("⚠️ Belum ada data karyawan harian.")
+    if not pemasak_list:
+        st.warning("⚠️ Belum ada data karyawan.")
     else:
-        with st.form("form_presensi_harian", clear_on_submit=True):
+        with st.form("form_pemasak", clear_on_submit=True):
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 pilihan_karyawan = st.selectbox(
-                    "Pilih Karyawan", 
-                    options=harian_karyawan, 
-                    format_func=lambda x: f"{x['nama_karyawan']} — Divisi: {x.get('divisi', '-')} ({x.get('jabatan', 'Anggota')})"
+                    "Pilih Karyawan Pemasak", 
+                    options=pemasak_list, 
+                    format_func=lambda x: f"{x['nama_karyawan']} — ({x.get('jabatan', 'Anggota')})"
                 )
                 
-                divisi = pilihan_karyawan.get('divisi', '')
                 jabatan = pilihan_karyawan.get('jabatan', 'Anggota')
-                nama_karyawan = pilihan_karyawan.get('nama_karyawan', '')
-
-                # Penentuan Gaji Standar Berdasarkan Divisi
-                if divisi == "Admin Pabrik" or nama_karyawan == "Nila":
-                    gaji_std_default = GAJI_HARIAN_TETAP_ADMIN  # Rp 100.000 Flat
-                    tipe_pembayaran = "Admin (Flat Harian Rp 100.000 - Tanpa Libur)"
-                elif divisi == "Packing Online":
-                    gaji_std_default = gaji_harian_online
-                    tipe_pembayaran = f"Packing Online (Acuan Rp 2.000.000 / {hari_kerja_bln} hari kerja)"
-                else:  # Produksi Brondong (Pemasak)
-                    gaji_std_default = gaji_harian_kepala if jabatan == "Kepala Regu" else gaji_harian_anggota
-                    tipe_pembayaran = f"Pemasak Brondong - {jabatan}"
-
-                st.info(f"**Tipe Sistem:** {tipe_pembayaran}\n\n**Gaji Harian Standard:** Rp {gaji_std_default:,.0f}")
+                gaji_std_default = gaji_harian_kepala if jabatan == "Kepala Regu" else gaji_harian_anggota
+                st.info(f"**Jabatan:** {jabatan}\n\n**Gaji Standar Harian:** Rp {gaji_std_default:,.0f}")
 
             with col_p2:
-                if divisi == "Produksi Brondong":
-                    target_bal = 50
-                    hasil_bal = st.number_input("Total Hasil Masak Hari Ini (Bal)", min_value=0, value=50, step=1)
-                    st.write(f"🎯 **Target Standard:** {target_bal} Bal / Hari (Khusus Anggota)")
-                else:
-                    hasil_bal = 1  # Kehadiran 1 Hari penuh
-                    st.write("📌 **Kehadiran Kerja Harian Penuh**")
+                target_bal = 50
+                hasil_bal = st.number_input("Total Hasil Masak Hari Ini (Bal)", min_value=0, value=50, step=1)
+                st.write(f"🎯 **Target Standard:** {target_bal} Bal / Hari (Khusus Anggota)")
 
-            btn_simpan_harian = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
+            btn_simpan_pemasak = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
 
-            if btn_simpan_harian:
-                potongan = 0
-                catatan = ""
+            if btn_simpan_pemasak:
+                nama_karyawan = pilihan_karyawan['nama_karyawan']
                 
-                # Logika Penghitungan Gaji
-                if divisi == "Admin Pabrik" or nama_karyawan == "Nila":
-                    gaji_akhir = GAJI_HARIAN_TETAP_ADMIN
-                    catatan = "Presensi Admin Pabrik (Gaji harian Rp 100.000)."
-                elif divisi == "Packing Online":
+                if jabatan == "Kepala Regu":
                     gaji_akhir = gaji_std_default
-                    catatan = "Presensi Packing Online (Harian acuan 2 juta)."
-                else: # Pemasak Brondong
-                    if jabatan == "Kepala Regu":
+                    catatan = f"Kepala Regu: Gaji utuh Rp {gaji_akhir:,.0f}."
+                else:
+                    if hasil_bal >= target_bal:
                         gaji_akhir = gaji_std_default
-                        catatan = f"Kepala Regu: Gaji utuh Rp {gaji_akhir:,.0f}."
+                        catatan = f"Target tercapai ({hasil_bal}/{target_bal} Bal). Gaji penuh."
                     else:
-                        if hasil_bal >= target_bal:
-                            gaji_akhir = gaji_std_default
-                            catatan = f"Target tercapai ({hasil_bal}/{target_bal} Bal). Gaji utuh."
-                        else:
-                            persentase = hasil_bal / target_bal
-                            gaji_akhir = gaji_std_default * persentase
-                            potongan = gaji_std_default - gaji_akhir
-                            catatan = f"Tidak capai target ({hasil_bal}/{target_bal} Bal). Dipotong Rp {potongan:,.0f}."
+                        persentase = hasil_bal / target_bal
+                        gaji_akhir = gaji_std_default * persentase
+                        potongan = gaji_std_default - gaji_akhir
+                        catatan = f"Tidak mencapai target ({hasil_bal}/{target_bal} Bal). Dipotong Rp {potongan:,.0f} ({persentase*100:.0f}%)."
 
                 payload = {
-                    "tanggal": str(tgl_presensi),
+                    "tanggal": str(tgl_pemasak),
                     "nama_karyawan": nama_karyawan,
                     "sistem_gaji": "Harian",
-                    "jenis_produk": divisi if divisi else "Harian Standard",
+                    "jenis_produk": "Brondong (Masak)",
                     "ukuran_bal": "-",
                     "jumlah_borongan": float(hasil_bal),
                     "nominal_satuan": int(gaji_std_default),
@@ -390,326 +285,59 @@ elif menu == "Presensi Harian & Non-Borongan":
                 }
                 
                 supabase.table("LogHarian").insert(payload).execute()
-                st.success(f"✅ Presensi {nama_karyawan} disimpan! Gaji Hari Ini: **Rp {gaji_akhir:,.0f}** ({catatan})")
+                st.success(f"✅ Presensi {nama_karyawan} berhasil disimpan! Gaji Diterima: **Rp {gaji_akhir:,.0f}** ({catatan})")
                 st.rerun()
+
 # ----------------------------------------------------
-# MENU 4: KASBON KARYAWAN
-# ----------------------------------------------------
-elif menu == "Kasbon Karyawan":
-    st.subheader("💵 Pencatatan Kasbon / Pinjaman Karyawan")
-    
-    karyawan_data = get_karyawan_list()
-    # Menampilkan hanya karyawan yang berstatus Aktif
-    list_karyawan_aktif = [k["nama_karyawan"] for k in karyawan_data if k.get("status", "Aktif") == "Aktif"]
-    
-    if not list_karyawan_aktif:
-        st.warning("⚠️ Belum ada data karyawan aktif.")
-    else:
-        col_ks1, col_ks2 = st.columns([1, 1])
-        
-        # TABEL INPUT KASBON BARU
-        with col_ks1:
-            st.markdown("##### ➕ Input Kasbon Baru (Bon Sabtu)")
-            with st.form("form_kasbon", clear_on_submit=True):
-                tgl_kasbon = st.date_input("Tanggal Kasbon", value=datetime.today())
-                nama_kasbon = st.selectbox("Pilih Karyawan", list_karyawan_aktif)
-                nominal_kasbon = st.number_input("Nominal Kasbon (Rp)", min_value=5000, step=5000, value=50000)
-                ket_kasbon = st.text_input("Keterangan / Catatan", value="Bon Sabtu")
-                
-                btn_simpan_kasbon = st.form_submit_button("💾 Simpan Kasbon", type="primary")
-                
-                if btn_simpan_kasbon:
-                    try:
-                        payload_kasbon = {
-                            "tanggal": str(tgl_kasbon),
-                            "nama_karyawan": nama_kasbon,
-                            "nominal": float(nominal_kasbon),
-                            "keterangan": ket_kasbon
-                        }
-                        supabase.table("Kasbon").insert(payload_kasbon).execute()
-                        st.success(f"✅ Kasbon Rp {nominal_kasbon:,.0f} untuk {nama_kasbon} berhasil dicatat!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal menyimpan kasbon: {e}")
-
-        # TABEL RIWAYAT & HAPUS KASBON
-        with col_ks2:
-            st.markdown("##### 📋 Riwayat Transaksi Kasbon")
-            res_bon = supabase.table("Kasbon").select("*").order("id", desc=True).limit(20).execute()
-            
-            if res_bon.data:
-                df_bon = pd.DataFrame(res_bon.data)
-                st.dataframe(df_bon[["id", "tanggal", "nama_karyawan", "nominal", "keterangan"]], use_container_width=True)
-                
-                st.divider()
-                id_hapus_bon = st.number_input("Hapus Kasbon ID", min_value=1, step=1, value=1)
-                if st.button("🗑️ Hapus Kasbon"):
-                    try:
-                        supabase.table("Kasbon").delete().eq("id", int(id_hapus_bon)).execute()
-                        st.success(f"Kasbon ID {id_hapus_bon} berhasil dihapus!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal menghapus: {e}")
-            else:
-                st.info("Belum ada riwayat transaksi kasbon.")
-# ----------------------------------------------------
-# ----------------------------------------------------
-# MENU 5: STOK BAHAN BAKU & KEMASAN
-# ----------------------------------------------------
-elif menu == "Stok Bahan & Kemasan":
-    st.subheader("📦 Manajemen Stok Bahan Baku & Kemasan")
-    
-    # Ambil data dari Supabase secara aman
-    try:
-        res_stok = supabase.table("StokBahan").select("*").order("nama_bahan").execute()
-        data_stok = res_stok.data if res_stok.data else []
-    except Exception as e:
-        data_stok = []
-        st.error(f"⚠️ Gagal terhubung ke tabel 'StokBahan'. Pastikan tabel sudah dibuat di Supabase. Error: {e}")
-
-    tab1, tab2, tab3 = st.tabs(["📊 Ringkasan Stok", "➕ Transaksi Stok (Masuk/Keluar)", "⚙️ Tambah / Edit Master Bahan"])
-    
-    # ------------------------------------------------
-    # TAB 1: RINGKASAN STOK
-    # ------------------------------------------------
-    with tab1:
-        st.markdown("##### 📌 Status Stok Bahan Baku & Kemasan Saat Ini")
-        
-        if data_stok:
-            df_stok = pd.DataFrame(data_stok)
-            
-            # Peringatan jika ada stok di bawah batas minimum
-            stok_tipis = df_stok[df_stok["stok_saat_ini"] <= df_stok["stok_minimum"]]
-            if not stok_tipis.empty:
-                st.warning("⚠️ **PERINGATAN: Bahan/Kemasan Berikut Sudah Hampir Habis!**")
-                for _, row in stok_tipis.iterrows():
-                    st.write(f"- 🔴 **{row['nama_bahan']}**: Sisa **{row['stok_saat_ini']:,.0f} {row['satuan']}** (Min: {row['stok_minimum']} {row['satuan']})")
-                st.divider()
-
-            df_tampil = df_stok[["nama_bahan", "kategori", "stok_saat_ini", "satuan", "stok_minimum"]].copy()
-            df_tampil.columns = ["Nama Bahan / Kemasan", "Kategori", "Stok Saat Ini", "Satuan", "Stok Minimum"]
-            st.dataframe(df_tampil, use_container_width=True)
-        else:
-            st.info("ℹ️ Belum ada data bahan/kemasan. Silakan tambahkan item baru pada tab **'⚙️ Tambah / Edit Master Bahan'** di atas.")
-
-    # ------------------------------------------------
-    # TAB 2: TRANSAKSI STOK (MASUK/KELUAR)
-    # ------------------------------------------------
-    with tab2:
-        st.markdown("##### 📝 Pencatatan Stok Masuk (Pembelian) atau Keluar")
-        
-        if data_stok:
-            list_nama_bahan = [b["nama_bahan"] for b in data_stok]
-            
-            with st.form("form_trx_stok", clear_on_submit=True):
-                tgl_trx = st.date_input("Tanggal Transaksi", value=datetime.today())
-                bahan_terpilih = st.selectbox("Pilih Bahan / Kemasan", list_nama_bahan)
-                jenis_trx = st.selectbox("Jenis Transaksi", ["Masuk (Pembelian)", "Keluar (Produksi/Rusak)"])
-                jumlah_trx = st.number_input("Jumlah", min_value=1.0, step=1.0, value=10.0)
-                ket_trx = st.text_input("Keterangan", value="Pembelian Rutin")
-                
-                btn_simpan_trx = st.form_submit_button("💾 Simpan Transaksi Stok", type="primary")
-                
-                if btn_simpan_trx:
-                    try:
-                        item_bahan = next(b for b in data_stok if b["nama_bahan"] == bahan_terpilih)
-                        stok_lama = float(item_bahan["stok_saat_ini"])
-                        stok_baru = (stok_lama + float(jumlah_trx)) if jenis_trx == "Masuk (Pembelian)" else (stok_lama - float(jumlah_trx))
-                        
-                        supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", item_bahan["id"]).execute()
-                        
-                        payload_log = {
-                            "tanggal": str(tgl_trx),
-                            "nama_bahan": bahan_terpilih,
-                            "jenis_transaksi": jenis_trx,
-                            "jumlah": float(jumlah_trx),
-                            "keterangan": ket_trx
-                        }
-                        supabase.table("LogStok").insert(payload_log).execute()
-                        st.success(f"✅ Stok {bahan_terpilih} berhasil diperbarui! Sisa: {stok_baru:,.0f} {item_bahan['satuan']}")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal menyimpan transaksi stok: {e}")
-        else:
-            st.warning("⚠️ Tambahkan bahan/kemasan terlebih dahulu di tab **'⚙️ Tambah / Edit Master Bahan'**.")
-
-    # ------------------------------------------------
-    # TAB 3: MASTER BAHAN BARU
-    # ------------------------------------------------
-    with tab3:
-        col_m1, col_m2 = st.columns([1, 1])
-        
-        with col_m1:
-            st.markdown("##### ➕ Tambah Item Bahan / Kemasan Baru")
-            with st.form("form_master_bahan", clear_on_submit=True):
-                nama_b_baru = st.text_input("Nama Bahan / Kemasan", placeholder="Contoh: Bungkus Makaroni 18g")
-                kat_b_baru = st.selectbox("Kategori", ["Kemasan/Plastik", "Bahan Baku Mentah", "Bumbu & Minyak", "Lain-Lain"])
-                stok_awal = st.number_input("Stok Awal Saat Ini", min_value=0.0, step=1.0, value=0.0)
-                satuan_b = st.selectbox("Satuan", ["Pcs", "Kg", "Bal", "Roll", "Lbr", "Liter"])
-                stok_min = st.number_input("Batas Stok Minimum (Warning)", min_value=1.0, step=1.0, value=10.0)
-                
-                btn_simpan_master = st.form_submit_button("➕ Simpan Bahan Baru", type="primary")
-                
-                if btn_simpan_master:
-                    if not nama_b_baru.strip():
-                        st.error("Nama bahan wajib diisi!")
-                    else:
-                        try:
-                            payload_master = {
-                                "nama_bahan": nama_b_baru.strip(),
-                                "kategori": kat_b_baru,
-                                "stok_saat_ini": float(stok_awal),
-                                "satuan": satuan_b,
-                                "stok_minimum": float(stok_min)
-                            }
-                            supabase.table("StokBahan").insert(payload_master).execute()
-                            st.success(f"✅ Item '{nama_b_baru}' berhasil ditambahkan!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal menyimpan ke Supabase: {e}")
-
-        with col_m2:
-            st.markdown("##### 🗑️ Hapus Item Master Bahan")
-            if data_stok:
-                with st.form("form_hapus_bahan"):
-                    item_hapus = st.selectbox("Pilih Bahan yang Akan Dihapus", [b["nama_bahan"] for b in data_stok])
-                    btn_hapus = st.form_submit_button("🗑️ Hapus Item Master")
-                    
-                    if btn_hapus:
-                        try:
-                            supabase.table("StokBahan").delete().eq("nama_bahan", item_hapus).execute()
-                            st.success(f"Item '{item_hapus}' berhasil dihapus.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal menghapus: {e}")
-    # ------------------------------------------------
-    # TAB 3: MASTER BAHAN & KEMASAN
-    # ------------------------------------------------
-    with tab3:
-        col_m1, col_m2 = st.columns([1, 1])
-        
-        with col_m1:
-            st.markdown("##### ➕ Tambah Item Bahan / Kemasan Baru")
-            with st.form("form_master_bahan", clear_on_submit=True):
-                nama_b_baru = st.text_input("Nama Bahan / Kemasan", placeholder="Contoh: Plastik Bal 18g, Bumbu Bawang, dll")
-                kat_b_baru = st.selectbox("Kategori", ["Kemasan/Plastik", "Bahan Baku Mentah", "Bumbu & Minyak", "Lain-Lain"])
-                stok_awal = st.number_input("Stok Awal Saat Ini", min_value=0.0, step=1.0, value=0.0)
-                satuan_b = st.selectbox("Satuan", ["Kg", "Bal", "Roll", "Pcs", "Lbr", "Liter"])
-                stok_min = st.number_input("Batas Stok Minimum (Warning)", min_value=1.0, step=1.0, value=10.0)
-                
-                btn_simpan_master = st.form_submit_button("➕ Simpan Bahan Baru", type="primary")
-                
-                if btn_simpan_master:
-                    if nama_b_baru.strip() == "":
-                        st.error("Nama bahan tidak boleh kosong!")
-                    else:
-                        try:
-                            payload_master = {
-                                "nama_bahan": nama_b_baru.strip(),
-                                "kategori": kat_b_baru,
-                                "stok_saat_ini": float(stok_awal),
-                                "satuan": satuan_b,
-                                "stok_minimum": float(stok_min)
-                            }
-                            supabase.table("StokBahan").insert(payload_master).execute()
-                            st.success(f"✅ Item '{nama_b_baru}' berhasil ditambahkan!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal menyimpan: {e}")
-
-        with col_m2:
-            st.markdown("##### 🗑️ Hapus Item Master Bahan")
-            if data_stok:
-                with st.form("form_hapus_bahan"):
-                    item_hapus = st.selectbox("Pilih Bahan yang Akan Dihapus", [b["nama_bahan"] for b in data_stok])
-                    btn_hapus = st.form_submit_button("🗑️ Hapus Item Master")
-                    
-                    if btn_hapus:
-                        try:
-                            supabase.table("StokBahan").delete().eq("nama_bahan", item_hapus).execute()
-                            st.success(f"Item '{item_hapus}' berhasil dihapus.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal menghapus: {e}")
-# ----------------------------------------------------
-# MENU 6: MASTER KARYAWAN
+# MENU 3: MASTER KARYAWAN
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
     
     col_k1, col_k2 = st.columns(2)
     
-    # KOLOM 1: TAMBAH KARYAWAN BARU
     with col_k1:
-        st.subheader("➕ Tambah Karyawan Baru")
-        with st.form("form_tambah_karyawan"):
+        st.markdown("##### Tambah Karyawan Baru")
+        with st.form("form_karyawan", clear_on_submit=True):
             nama_baru = st.text_input("Nama Karyawan")
-            divisi_baru = st.selectbox("Divisi", ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"])
+            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Produksi Snack"])
             jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu"])
-            status_baru = st.selectbox("Status", ["Aktif", "Non-Aktif"])
+            btn_karyawan = st.form_submit_button("Tambah Karyawan")
             
-            btn_karyawan = st.form_submit_button("➕ Tambah Karyawan")
-
             if btn_karyawan:
                 if nama_baru:
                     try:
                         payload_k = {
                             "nama_karyawan": nama_baru.strip().title(),
                             "divisi": divisi_baru,
-                            "jabatan": jabatan_baru,
-                            "status": status_baru
+                            "jabatan": jabatan_baru
                         }
                         supabase.table("MasterKaryawan").insert(payload_k).execute()
                         st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Gagal menyimpan data: {e}")
+                        st.error("Gagal menambahkan. Pastikan struktur tabel Supabase sudah sesuai.")
                 else:
                     st.error("Nama karyawan wajib diisi!")
 
-    # KOLOM 2: EDIT & KELOLA DATA KARYAWAN LAMA
     with col_k2:
-        res = supabase.table("MasterKaryawan").select("*").order("nama_karyawan").execute()
-        data_karyawan = res.data
-
-        if data_karyawan:
-            st.subheader("✏️ Edit Data & Status Karyawan")
+        st.markdown("##### Daftar Karyawan Terdaftar")
+        res_k = supabase.table("MasterKaryawan").select("*").order("nama_karyawan").execute()
+        if res_k.data:
+            df_k = pd.DataFrame(res_k.data)
+            cols_show = [c for c in ["id", "nama_karyawan", "divisi", "jabatan"] if c in df_k.columns]
+            st.dataframe(df_k[cols_show], use_container_width=True)
             
-            list_nama = [f"{k['nama_karyawan']} ({k.get('status', 'Aktif')})" for k in data_karyawan]
-            karyawan_pilihan_str = st.selectbox("Pilih Karyawan yang ingin diubah:", list_nama)
-            
-            idx_pilihan = list_nama.index(karyawan_pilihan_str)
-            detail_k = data_karyawan[idx_pilihan]
-            
-            with st.form("form_edit_karyawan"):
-                divisi_opsi = ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"]
-                status_opsi = ["Aktif", "Non-Aktif"]
-                
-                idx_div = divisi_opsi.index(detail_k.get("divisi")) if detail_k.get("divisi") in divisi_opsi else 0
-                idx_stat = status_opsi.index(detail_k.get("status")) if detail_k.get("status") in status_opsi else 0
-                
-                divisi_edit = st.selectbox("Divisi", divisi_opsi, index=idx_div)
-                jabatan_edit = st.text_input("Jabatan", value=detail_k.get("jabatan") or "Anggota")
-                status_edit = st.selectbox("Status Karyawan", status_opsi, index=idx_stat)
-                
-                btn_update = st.form_submit_button("💾 Simpan Perubahan")
-                
-                if btn_update:
-                    try:
-                        supabase.table("MasterKaryawan").update({
-                            "divisi": divisi_edit,
-                            "jabatan": jabatan_edit,
-                            "status": status_edit
-                        }).eq("id", detail_k["id"]).execute()
-                        
-                        st.success(f"Data {detail_k['nama_karyawan']} berhasil diperbarui!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal memperbarui data: {e}")
+            id_del_k = st.number_input("Hapus ID Karyawan", min_value=1, step=1, value=1)
+            if st.button("Hapus Karyawan"):
+                supabase.table("MasterKaryawan").delete().eq("id", int(id_del_k)).execute()
+                st.success("Karyawan dihapus!")
+                st.rerun()
         else:
-            st.info("Belum ada data karyawan terdaftar.")
-#----------------------------------------------------
-# MENU 7: DATA & EDIT LOG
+            st.info("Belum ada data karyawan.")
+
+# ----------------------------------------------------
+# MENU 4: DATA & EDIT LOG
 # ----------------------------------------------------
 elif menu == "Data & Edit Log":
     st.subheader("📋 Riwayat Data Log Produksi & Edit")
@@ -731,7 +359,7 @@ elif menu == "Data & Edit Log":
             id_hapus = st.number_input("Masukkan ID Data yang akan dihapus", min_value=1, step=1, value=1)
             if st.button("Hapus Data Log", type="primary"):
                 supabase.table("LogHarian").delete().eq("id", int(id_hapus)).execute()
-                st.success(f"Data ID {id_hapus} berhasil dihapus!")
+                st.success(f"Data ID {id_hapus} dihapus!")
                 st.rerun()
 
         with col_edit:
@@ -749,8 +377,10 @@ elif menu == "Data & Edit Log":
                     edit_nama = st.selectbox("Nama Karyawan", list_nama if list_nama else [curr.get("nama_karyawan")], index=idx_nama)
                     edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=0 if curr.get("sistem_gaji") == "Borongan" else 1)
                     
-                    edit_produk = st.text_input("Jenis / Divisi Produk", value=str(curr.get("jenis_produk", "")))
-                    edit_jumlah = st.number_input("Jumlah Ball / Hari", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
+                    idx_prod = DAFTAR_PRODUK.index(curr.get("jenis_produk")) if curr.get("jenis_produk") in DAFTAR_PRODUK else 0
+                    edit_produk = st.selectbox("Jenis Produk", DAFTAR_PRODUK, index=idx_prod)
+                    
+                    edit_jumlah = st.number_input("Jumlah Ball / Hasil", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
                     edit_nominal = st.number_input("Nominal Satuan (Rp)", value=int(curr.get("nominal_satuan", 0)), step=500)
                     
                     if st.form_submit_button("Update Data"):
@@ -767,7 +397,7 @@ elif menu == "Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 8: REKAP & EKSPOR EXCEL
+# MENU 5: REKAP & EKSPOR EXCEL
 # ----------------------------------------------------
 elif menu == "Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -829,64 +459,9 @@ elif menu == "Rekap & Ekspor Excel":
             )
         else:
             st.warning("Tidak ada transaksi pada bulan & tahun ini.")
+
 # ----------------------------------------------------
-# PERBAIKAN MENU REKAP: POTONG KASBON OTOMATIS
-# ----------------------------------------------------
-elif menu == "Rekap & Ekspor Excel":
-    st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
-    
-    col_b, col_t = st.columns(2)
-    with col_b:
-        bulan = st.selectbox("Pilih Bulan", range(1, 13), index=datetime.today().month - 1)
-    with col_t:
-        tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
-        
-    res = supabase.table("LogHarian").select("*").execute()
-    res_kasbon = supabase.table("Kasbon").select("*").execute()
-    
-    if res.data:
-        df = pd.DataFrame(res.data)
-        df["tanggal"] = pd.to_datetime(df["tanggal"])
-        df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
-        
-        # Filter Data Kasbon
-        if res_kasbon.data:
-            df_k = pd.DataFrame(res_kasbon.data)
-            df_k["tanggal"] = pd.to_datetime(df_k["tanggal"])
-            df_k_filtered = df_k[(df_k["tanggal"].dt.month == bulan) & (df_k["tanggal"].dt.year == tahun)]
-        else:
-            df_k_filtered = pd.DataFrame(columns=["nama_karyawan", "nominal"])
-        
-        if not df_filtered.empty:
-            st.divider()
-            st.markdown("### 1. Rekapitulasi Gaji Karyawan (Setelah Potongan Kasbon)")
-            
-            # Hitung Gaji Kotor
-            rekap_gaji = df_filtered.groupby(["nama_karyawan", "sistem_gaji"]).agg(
-                total_absensi=('tanggal', 'nunique'),
-                total_hasil=('jumlah_borongan', 'sum'),
-                gaji_kotor=('total_gaji', 'sum')
-            ).reset_index()
-            
-            # Hitung Total Kasbon per Karyawan
-            if not df_k_filtered.empty:
-                rekap_bon = df_k_filtered.groupby("nama_karyawan")["nominal"].sum().reset_index()
-                rekap_bon.rename(columns={"nominal": "total_kasbon"}, inplace=True)
-                rekap_gaji = pd.merge(rekap_gaji, rekap_bon, on="nama_karyawan", how="left")
-            else:
-                rekap_gaji["total_kasbon"] = 0
-                
-            rekap_gaji["total_kasbon"] = rekap_gaji["total_kasbon"].fillna(0)
-            
-            # Gaji Bersih = Gaji Kotor - Total Kasbon
-            rekap_gaji["gaji_bersih"] = rekap_gaji["gaji_kotor"] - rekap_gaji["total_kasbon"]
-            
-            # Tampilkan Tabel
-            st.dataframe(
-                rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
-                use_container_width=True)
-# ----------------------------------------------------
-# MENU 9: CETAK STRUK TERMAL
+# MENU 6: CETAK STRUK TERMAL
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
