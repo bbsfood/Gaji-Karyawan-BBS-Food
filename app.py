@@ -117,31 +117,45 @@ elif menu == "Data & Edit Log":
         # Fitur Edit
         with col_edit:
             st.subheader("✏️ Edit Data")
-            id_edit = st.number_input("Masukkan ID Data yang akan diubah", min_value=1, step=1)
-            data_edit = [d for d in res.data if d["id"] == id_edit]
+            id_edit = st.number_input("Masukkan ID Data yang akan diubah", min_value=1, step=1, value=1)
+            
+            # Cari data berdasarkan ID
+            data_edit = [d for d in res.data if d["id"] == int(id_edit)]
             
             if data_edit:
                 curr = data_edit[0]
                 with st.form("form_edit"):
-                    edit_nama = st.text_input("Nama", value=curr["nama_karyawan"])
-                    edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=0 if curr.get("sistem_gaji") == "Borongan" else 1)
-                    edit_jumlah = st.number_input("Jumlah Borongan / Hari", value=float(curr["jumlah_borongan"]), step=0.5, format="%.1f")
-                    edit_nominal = st.number_input("Nominal Satuan (Rp)", value=curr.get("nominal_satuan", 0))
+                    edit_nama = st.text_input("Nama", value=curr.get("nama_karyawan", ""))
+                    
+                    idx_sistem = 0 if curr.get("sistem_gaji") == "Borongan" else 1
+                    edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=idx_sistem)
+                    
+                    edit_jumlah = st.number_input(
+                        "Jumlah Borongan / Hari", 
+                        value=float(curr.get("jumlah_borongan", 1.0)), 
+                        step=0.5, 
+                        format="%.1f"
+                    )
+                    edit_nominal = st.number_input("Nominal Satuan (Rp)", value=int(curr.get("nominal_satuan", 0)), step=500)
                     
                     if st.form_submit_button("Update Data"):
                         total_new = edit_jumlah * edit_nominal
-                        supabase.table("LogHarian").update({
-                            "nama_karyawan": edit_nama,
-                            "sistem_gaji": edit_sistem,
-                            "jumlah_borongan": edit_jumlah,
-                            "nominal_satuan": edit_nominal,
-                            "total_gaji": total_new
-                        }).eq("id", id_edit).execute()
-                        st.success("Data berhasil diperbarui!")
-                        st.rerun()
-    else:
-        st.info("Belum ada data log harian.")
-
+                        
+                        try:
+                            supabase.table("LogHarian").update({
+                                "nama_karyawan": edit_nama.strip().title(),
+                                "sistem_gaji": edit_sistem,
+                                "jumlah_borongan": float(edit_jumlah),
+                                "nominal_satuan": int(edit_nominal),
+                                "total_gaji": float(total_new)
+                            }).eq("id", int(id_edit)).execute()
+                            
+                            st.success("Data berhasil diperbarui!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal memperbarui data: {e}")
+            else:
+                st.warning(f"Data dengan ID {int(id_edit)} tidak ditemukan.")
 # ----------------------------------------------------
 # MENU 3: REKAP BULANAN PER ORANG
 # ----------------------------------------------------
