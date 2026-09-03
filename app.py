@@ -321,86 +321,80 @@ elif menu == "Master Karyawan":
     col_k1, col_k2 = st.columns(2)
     
     with col_k1:
-        st.markdown("##### Tambah Karyawan Baru")
-        with st.form("form_karyawan", clear_on_submit=True):
-            nama_baru = st.text_input("Nama Karyawan")
-            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Packing Online", "Admin Pabrik", "Produksi Snack"])
-            jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu", "Admin"])
-            btn_karyawan = st.form_submit_button("Tambah Karyawan")
-            
-            if btn_karyawan:
-                if nama_baru:
-                    try:
-                        payload_k = {
-                            "nama_karyawan": nama_baru.strip().title(),
-                            "divisi": divisi_baru,
-                            "jabatan": jabatan_baru
-                        }
-                        supabase.table("MasterKaryawan").insert(payload_k).execute()
-                        st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Gagal menyimpan ke Supabase! Pastikan kolom 'divisi' dan 'jabatan' sudah dibuat di tabel 'MasterKaryawan'. Detail Error: {e}")
-                else:
-                    st.error("Nama karyawan wajib diisi!")
+        # ==========================================
+# 1. FORM TAMBAH KARYAWAN BARU
+# ==========================================
+st.subheader("➕ Tambah Karyawan Baru")
+with st.form("form_tambah_karyawan"):
+    nama_baru = st.text_input("Nama Karyawan")
+    divisi_baru = st.selectbox("Divisi", ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"])
+    jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu"])
+    status_baru = st.selectbox("Status", ["Aktif", "Non-Aktif"])
+    
+    btn_karyawan = st.form_submit_button("➕ Tambah Karyawan")
 
-    with col_k2:
-        st.markdown("##### Daftar Karyawan Terdaftar")
-        res_k = supabase.table("MasterKaryawan").select("*").order("nama_karyawan").execute()
-        if res_k.data:
-            df_k = pd.DataFrame(res_k.data)
-            cols_show = [c for c in ["id", "nama_karyawan", "divisi", "jabatan"] if c in df_k.columns]
-            st.dataframe(df_k[cols_show], use_container_width=True)
-            
-            id_del_k = st.number_input("Hapus ID Karyawan", min_value=1, step=1, value=1)
-            if st.button("Hapus Karyawan"):
-                supabase.table("MasterKaryawan").delete().eq("id", int(id_del_k)).execute()
-                st.success("Karyawan berhasil dihapus!")
+    if btn_karyawan:
+        if nama_baru:
+            try:
+                payload_k = {
+                    "nama_karyawan": nama_baru.strip().title(),
+                    "divisi": divisi_baru,
+                    "jabatan": jabatan_baru,
+                    "status": status_baru
+                }
+                supabase.table("MasterKaryawan").insert(payload_k).execute()
+                st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
                 st.rerun()
+            except Exception as e:
+                st.error(f"Gagal menyimpan data: {e}")
         else:
-            st.info("Belum ada data karyawan.")
-            import streamlit as st
+            st.error("Nama karyawan wajib diisi!")
 
-# ... (kode aplikasi Anda)
 
-# Mengambil daftar karyawan dari Supabase
-res = supabase.table("MasterKaryawan").select("*").execute()
+# ==========================================
+# 2. FORM EDIT / UPDATE KARYAWAN LAMA
+# ==========================================
+res = supabase.table("MasterKaryawan").select("*").order("nama_karyawan").execute()
 data_karyawan = res.data
 
 if data_karyawan:
-    st.subheader("✏️ Edit Data Karyawan Lama")
+    st.divider()
+    st.subheader("✏️ Edit Data & Status Karyawan")
     
-    # Pilih karyawan yang ingin diubah
-    list_nama = [k["nama_karyawan"] for k in data_karyawan]
-    karyawan_pilihan = st.selectbox("Pilih Karyawan yang ingin diupdate:", list_nama)
+    # Menampilkan indikator status di daftar pilihan
+    list_nama = [f"{k['nama_karyawan']} ({k.get('status', 'Aktif')})" for k in data_karyawan]
+    karyawan_pilihan_str = st.selectbox("Pilih Karyawan yang ingin diubah:", list_nama)
     
-    # Cari data detail karyawan terpilih
-    detail_k = next((item for item in data_karyawan if item["nama_karyawan"] == karyawan_pilihan), None)
+    # Mengambil ID karyawan terpilih
+    idx_pilihan = list_nama.index(karyawan_pilihan_str)
+    detail_k = data_karyawan[idx_pilihan]
     
-    if detail_k:
-        with st.form("form_edit_karyawan"):
-            divisi_opsi = ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"]
-            
-            # Cari index awal agar selectbox otomatis memilih divisi saat ini
-            idx_div = divisi_opsi.index(detail_k.get("divisi")) if detail_k.get("divisi") in divisi_opsi else 0
-            
-            divisi_edit = st.selectbox("Divisi", divisi_opsi, index=idx_div)
-            jabatan_edit = st.text_input("Jabatan", value=detail_k.get("jabatan") or "Anggota")
-            
-            btn_update = st.form_submit_button("💾 Simpan Perubahan")
-            
-            if btn_update:
-                try:
-                    supabase.table("MasterKaryawan").update({
-                        "divisi": divisi_edit,
-                        "jabatan": jabatan_edit
-                    }).eq("id", detail_k["id"]).execute()
-                    
-                    st.success(f"Data {karyawan_pilihan} berhasil diperbarui!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Gagal memperbarui data: {e}")
-
+    with st.form("form_edit_karyawan"):
+        divisi_opsi = ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"]
+        status_opsi = ["Aktif", "Non-Aktif"]
+        
+        # Penyesuaian index pilihan awal
+        idx_div = divisi_opsi.index(detail_k.get("divisi")) if detail_k.get("divisi") in divisi_opsi else 0
+        idx_stat = status_opsi.index(detail_k.get("status")) if detail_k.get("status") in status_opsi else 0
+        
+        divisi_edit = st.selectbox("Divisi", divisi_opsi, index=idx_div)
+        jabatan_edit = st.text_input("Jabatan", value=detail_k.get("jabatan") or "Anggota")
+        status_edit = st.selectbox("Status Karyawan", status_opsi, index=idx_stat)
+        
+        btn_update = st.form_submit_button("💾 Simpan Perubahan")
+        
+        if btn_update:
+            try:
+                supabase.table("MasterKaryawan").update({
+                    "divisi": divisi_edit,
+                    "jabatan": jabatan_edit,
+                    "status": status_edit
+                }).eq("id", detail_k["id"]).execute()
+                
+                st.success(f"Data {detail_k['nama_karyawan']} berhasil diperbarui!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Gagal memperbarui data: {e}")
 # ----------------------------------------------------
 # MENU 4: DATA & EDIT LOG
 # ----------------------------------------------------
