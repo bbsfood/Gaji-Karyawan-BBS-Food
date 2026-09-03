@@ -626,7 +626,7 @@ elif menu == "Rekap & Ekspor Excel":
             # Tampilkan Tabel
             st.dataframe(
                 rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
-                use_container_width=True
+                use_container_width=True)
 # ----------------------------------------------------
 # MENU 7: CETAK STRUK TERMAL
 # ----------------------------------------------------
