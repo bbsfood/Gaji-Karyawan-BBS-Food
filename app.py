@@ -330,14 +330,17 @@ elif menu == "Master Karyawan":
             
             if btn_karyawan:
                 if nama_baru:
-                    payload_k = {
-                        "nama_karyawan": nama_baru.strip().title(),
-                        "divisi": divisi_baru,
-                        "jabatan": jabatan_baru
-                    }
-                    supabase.table("MasterKaryawan").insert(payload_k).execute()
-                    st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
-                    st.rerun()
+                    try:
+                        payload_k = {
+                            "nama_karyawan": nama_baru.strip().title(),
+                            "divisi": divisi_baru,
+                            "jabatan": jabatan_baru
+                        }
+                        supabase.table("MasterKaryawan").insert(payload_k).execute()
+                        st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan ke Supabase! Pastikan kolom 'divisi' dan 'jabatan' sudah dibuat di tabel 'MasterKaryawan'. Detail Error: {e}")
                 else:
                     st.error("Nama karyawan wajib diisi!")
 
