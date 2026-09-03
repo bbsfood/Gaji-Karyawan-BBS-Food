@@ -47,11 +47,14 @@ DAFTAR_PRODUK = [
 ]
 UKURAN_BAL = ["Isi 10", "Isi 12"]
 
-# Acuan UMR Sragen Bulanan & Fungsi Hari Kerja Efektif (Senin-Sabtu)
+# Acuan Standard Gaji Bulanan Pabrik
 GAJI_BULANAN_KEPALA_REGU = 2500000
 GAJI_BULANAN_ANGGOTA = 2377000
+GAJI_BULANAN_PACKING_ONLINE = 2000000
+GAJI_HARIAN_TETAP_ADMIN = 100000  # Nila (Admin Pabrik)
 
 def get_hari_kerja_efektif(tahun, bulan):
+    """Menghitung jumlah hari kerja efektif (Senin-Sabtu)"""
     _, total_hari = calendar.monthrange(tahun, bulan)
     hari_kerja = 0
     for day in range(1, total_hari + 1):
@@ -68,7 +71,7 @@ def get_karyawan_list():
 # Sidebar Navigasi
 menu = st.sidebar.radio("Pilih Menu", [
     "Input Bungkusan Borongan",
-    "Presensi Pemasak Brondong (Harian)",
+    "Presensi Harian & Non-Borongan",
     "Master Karyawan",
     "Data & Edit Log", 
     "Rekap & Ekspor Excel", 
@@ -82,10 +85,11 @@ if menu == "Input Bungkusan Borongan":
     st.subheader("📦 Input Hasil Bungkusan Borongan")
     
     karyawan_data = get_karyawan_list()
-    list_nama = [k["nama_karyawan"] for k in karyawan_data]
+    # Filter karyawan borongan / pembungkus
+    list_nama = [k["nama_karyawan"] for k in karyawan_data if k.get("divisi") == "Pembungkus / Borongan"] or [k["nama_karyawan"] for k in karyawan_data]
     
     if not list_nama:
-        st.warning("⚠️ Belum ada data karyawan. Silakan tambahkan di menu 'Master Karyawan' terlebih dahulu!")
+        st.warning("⚠️ Belum ada data karyawan borongan. Silakan tambahkan di menu 'Master Karyawan'!")
     else:
         tab_ind, tab_tim = st.tabs(["👤 Input Perorangan", "👥 Input Tim / Beregu (Brondong/Snack)"])
 
@@ -111,7 +115,6 @@ if menu == "Input Bungkusan Borongan":
                 with col_i3:
                     item_qty = st.number_input("Jumlah (Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f", key="ind_qty")
                 with col_i4:
-                    # Otomatis tentukan tarif: Brondong = 4500, Lainnya = 4000
                     default_tarif = 4500 if item_produk == "Brondong" else 4000
                     item_nominal = st.number_input("Gaji per Ball (Rp)", min_value=0, value=default_tarif, step=500, key="ind_nom")
                 
@@ -156,7 +159,7 @@ if menu == "Input Bungkusan Borongan":
                         })
                     
                     supabase.table("LogHarian").insert(data_to_insert).execute()
-                    st.success(f"Berhasil menyimpan {len(data_to_insert)} item produksi untuk {nama_karyawan}!")
+                    st.success(f"Berhasil menyimpan data borongan untuk {nama_karyawan}!")
                     st.session_state["items_borongan"] = []
                     st.rerun()
 
@@ -175,7 +178,6 @@ if menu == "Input Bungkusan Borongan":
                 nominal_tim = st.number_input("Gaji per Ball (Rp)", min_value=0, value=default_tarif_tim, step=500, key="tim_nom")
             
             st.divider()
-            
             pilih_anggota = st.multiselect("Pilih Anggota Tim yang Mengerjakan:", list_nama, key="tim_members")
             
             if pilih_anggota:
@@ -206,78 +208,100 @@ if menu == "Input Bungkusan Borongan":
                         })
                     
                     supabase.table("LogHarian").insert(data_tim_to_insert).execute()
-                    st.success(f"Berhasil menyimpan hasil {produk_tim} untuk {jumlah_anggota} anggota tim!")
+                    st.success(f"Berhasil menyimpan hasil tim untuk {jumlah_anggota} anggota!")
                     st.rerun()
 
 # ----------------------------------------------------
-# MENU 2: PRESENSI PEMASAK BRONDONG (HARIAN)
+# MENU 2: PRESENSI HARIAN & NON-BORONGAN
 # ----------------------------------------------------
-elif menu == "Presensi Pemasak Brondong (Harian)":
-    st.subheader("🌽 Presensi & Target Pemasak Brondong (Gaji Harian)")
+elif menu == "Presensi Harian & Non-Borongan":
+    st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
-    tgl_pemasak = st.date_input("Tanggal Kerja", value=datetime.today(), key="pemasak_tgl")
+    tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
+    thn = tgl_presensi.year
+    bln = tgl_presensi.month
     
-    if tgl_pemasak.weekday() == 6:
-        st.error("⚠️ Tanggal yang dipilih adalah hari Minggu (Libur Rutin Pabrik).")
+    hari_kerja_bln = get_hari_kerja_efektif(thn, bln)
     
-    hari_kerja_bln = get_hari_kerja_efektif(tgl_pemasak.year, tgl_pemasak.month)
+    # Hitung standar harian berdasarkan divisi
     gaji_harian_kepala = GAJI_BULANAN_KEPALA_REGU / hari_kerja_bln
     gaji_harian_anggota = GAJI_BULANAN_ANGGOTA / hari_kerja_bln
-    
-    nama_bln = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                "Juli", "Agustus", "September", "Oktober", "November", "Desember"][tgl_pemasak.month - 1]
-
-    st.caption(f"🗓️ **Periode {nama_bln} {tgl_pemasak.year}:** {hari_kerja_bln} Hari Kerja (Senin–Sabtu)")
-    st.caption(f"💡 **Acuan Harian:** Kepala Regu = Rp {gaji_harian_kepala:,.0f}/hari | Anggota = Rp {gaji_harian_anggota:,.0f}/hari (Target 50 Bal)")
+    gaji_harian_online = GAJI_BULANAN_PACKING_ONLINE / hari_kerja_bln
 
     karyawan_data = get_karyawan_list()
-    # Filter karyawan divisi 'Produksi Brondong' atau tampilkan semua jika belum diset
-    pemasak_list = [k for k in karyawan_data if k.get("divisi") == "Produksi Brondong"] or karyawan_data
+    # Exclude karyawan borongan murni jika diinginkan, atau tampilkan semua
+    harian_karyawan = [k for k in karyawan_data if k.get("divisi") != "Pembungkus / Borongan"] or karyawan_data
 
-    if not pemasak_list:
-        st.warning("⚠️ Belum ada data karyawan.")
+    if not harian_karyawan:
+        st.warning("⚠️ Belum ada data karyawan harian.")
     else:
-        with st.form("form_pemasak", clear_on_submit=True):
+        with st.form("form_presensi_harian", clear_on_submit=True):
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 pilihan_karyawan = st.selectbox(
-                    "Pilih Karyawan Pemasak", 
-                    options=pemasak_list, 
-                    format_func=lambda x: f"{x['nama_karyawan']} — ({x.get('jabatan', 'Anggota')})"
+                    "Pilih Karyawan", 
+                    options=harian_karyawan, 
+                    format_func=lambda x: f"{x['nama_karyawan']} — Divisi: {x.get('divisi', '-')} ({x.get('jabatan', 'Anggota')})"
                 )
                 
+                divisi = pilihan_karyawan.get('divisi', '')
                 jabatan = pilihan_karyawan.get('jabatan', 'Anggota')
-                gaji_std_default = gaji_harian_kepala if jabatan == "Kepala Regu" else gaji_harian_anggota
-                st.info(f"**Jabatan:** {jabatan}\n\n**Gaji Standar Harian:** Rp {gaji_std_default:,.0f}")
+                nama_karyawan = pilihan_karyawan.get('nama_karyawan', '')
+
+                # Penentuan Gaji Standar Berdasarkan Divisi
+                if divisi == "Admin Pabrik" or nama_karyawan == "Nila":
+                    gaji_std_default = GAJI_HARIAN_TETAP_ADMIN  # Rp 100.000 Flat
+                    tipe_pembayaran = "Admin (Flat Harian Rp 100.000 - Tanpa Libur)"
+                elif divisi == "Packing Online":
+                    gaji_std_default = gaji_harian_online
+                    tipe_pembayaran = f"Packing Online (Acuan Rp 2.000.000 / {hari_kerja_bln} hari kerja)"
+                else:  # Produksi Brondong (Pemasak)
+                    gaji_std_default = gaji_harian_kepala if jabatan == "Kepala Regu" else gaji_harian_anggota
+                    tipe_pembayaran = f"Pemasak Brondong - {jabatan}"
+
+                st.info(f"**Tipe Sistem:** {tipe_pembayaran}\n\n**Gaji Harian Standard:** Rp {gaji_std_default:,.0f}")
 
             with col_p2:
-                target_bal = 50
-                hasil_bal = st.number_input("Total Hasil Masak Hari Ini (Bal)", min_value=0, value=50, step=1)
-                st.write(f"🎯 **Target Standard:** {target_bal} Bal / Hari (Khusus Anggota)")
-
-            btn_simpan_pemasak = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
-
-            if btn_simpan_pemasak:
-                nama_karyawan = pilihan_karyawan['nama_karyawan']
-                
-                if jabatan == "Kepala Regu":
-                    gaji_akhir = gaji_std_default
-                    catatan = f"Kepala Regu: Gaji utuh Rp {gaji_akhir:,.0f}."
+                if divisi == "Produksi Brondong":
+                    target_bal = 50
+                    hasil_bal = st.number_input("Total Hasil Masak Hari Ini (Bal)", min_value=0, value=50, step=1)
+                    st.write(f"🎯 **Target Standard:** {target_bal} Bal / Hari (Khusus Anggota)")
                 else:
-                    if hasil_bal >= target_bal:
+                    hasil_bal = 1  # Kehadiran 1 Hari penuh
+                    st.write("📌 **Kehadiran Kerja Harian Penuh**")
+
+            btn_simpan_harian = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
+
+            if btn_simpan_harian:
+                potongan = 0
+                catatan = ""
+                
+                # Logika Penghitungan Gaji
+                if divisi == "Admin Pabrik" or nama_karyawan == "Nila":
+                    gaji_akhir = GAJI_HARIAN_TETAP_ADMIN
+                    catatan = "Presensi Admin Pabrik (Gaji harian Rp 100.000)."
+                elif divisi == "Packing Online":
+                    gaji_akhir = gaji_std_default
+                    catatan = "Presensi Packing Online (Harian acuan 2 juta)."
+                else: # Pemasak Brondong
+                    if jabatan == "Kepala Regu":
                         gaji_akhir = gaji_std_default
-                        catatan = f"Target tercapai ({hasil_bal}/{target_bal} Bal). Gaji penuh."
+                        catatan = f"Kepala Regu: Gaji utuh Rp {gaji_akhir:,.0f}."
                     else:
-                        persentase = hasil_bal / target_bal
-                        gaji_akhir = gaji_std_default * persentase
-                        potongan = gaji_std_default - gaji_akhir
-                        catatan = f"Tidak mencapai target ({hasil_bal}/{target_bal} Bal). Dipotong Rp {potongan:,.0f} ({persentase*100:.0f}%)."
+                        if hasil_bal >= target_bal:
+                            gaji_akhir = gaji_std_default
+                            catatan = f"Target tercapai ({hasil_bal}/{target_bal} Bal). Gaji utuh."
+                        else:
+                            persentase = hasil_bal / target_bal
+                            gaji_akhir = gaji_std_default * persentase
+                            potongan = gaji_std_default - gaji_akhir
+                            catatan = f"Tidak capai target ({hasil_bal}/{target_bal} Bal). Dipotong Rp {potongan:,.0f}."
 
                 payload = {
-                    "tanggal": str(tgl_pemasak),
+                    "tanggal": str(tgl_presensi),
                     "nama_karyawan": nama_karyawan,
                     "sistem_gaji": "Harian",
-                    "jenis_produk": "Brondong (Masak)",
+                    "jenis_produk": divisi if divisi else "Harian Standard",
                     "ukuran_bal": "-",
                     "jumlah_borongan": float(hasil_bal),
                     "nominal_satuan": int(gaji_std_default),
@@ -285,7 +309,7 @@ elif menu == "Presensi Pemasak Brondong (Harian)":
                 }
                 
                 supabase.table("LogHarian").insert(payload).execute()
-                st.success(f"✅ Presensi {nama_karyawan} berhasil disimpan! Gaji Diterima: **Rp {gaji_akhir:,.0f}** ({catatan})")
+                st.success(f"✅ Presensi {nama_karyawan} disimpan! Gaji Hari Ini: **Rp {gaji_akhir:,.0f}** ({catatan})")
                 st.rerun()
 
 # ----------------------------------------------------
@@ -300,23 +324,20 @@ elif menu == "Master Karyawan":
         st.markdown("##### Tambah Karyawan Baru")
         with st.form("form_karyawan", clear_on_submit=True):
             nama_baru = st.text_input("Nama Karyawan")
-            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Produksi Snack"])
-            jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu"])
+            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Packing Online", "Admin Pabrik", "Produksi Snack"])
+            jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu", "Admin"])
             btn_karyawan = st.form_submit_button("Tambah Karyawan")
             
             if btn_karyawan:
                 if nama_baru:
-                    try:
-                        payload_k = {
-                            "nama_karyawan": nama_baru.strip().title(),
-                            "divisi": divisi_baru,
-                            "jabatan": jabatan_baru
-                        }
-                        supabase.table("MasterKaryawan").insert(payload_k).execute()
-                        st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Gagal menambahkan. Pastikan struktur tabel Supabase sudah sesuai.")
+                    payload_k = {
+                        "nama_karyawan": nama_baru.strip().title(),
+                        "divisi": divisi_baru,
+                        "jabatan": jabatan_baru
+                    }
+                    supabase.table("MasterKaryawan").insert(payload_k).execute()
+                    st.success(f"Karyawan '{nama_baru.strip().title()}' berhasil ditambahkan!")
+                    st.rerun()
                 else:
                     st.error("Nama karyawan wajib diisi!")
 
@@ -331,7 +352,7 @@ elif menu == "Master Karyawan":
             id_del_k = st.number_input("Hapus ID Karyawan", min_value=1, step=1, value=1)
             if st.button("Hapus Karyawan"):
                 supabase.table("MasterKaryawan").delete().eq("id", int(id_del_k)).execute()
-                st.success("Karyawan dihapus!")
+                st.success("Karyawan berhasil dihapus!")
                 st.rerun()
         else:
             st.info("Belum ada data karyawan.")
@@ -359,7 +380,7 @@ elif menu == "Data & Edit Log":
             id_hapus = st.number_input("Masukkan ID Data yang akan dihapus", min_value=1, step=1, value=1)
             if st.button("Hapus Data Log", type="primary"):
                 supabase.table("LogHarian").delete().eq("id", int(id_hapus)).execute()
-                st.success(f"Data ID {id_hapus} dihapus!")
+                st.success(f"Data ID {id_hapus} berhasil dihapus!")
                 st.rerun()
 
         with col_edit:
@@ -377,10 +398,8 @@ elif menu == "Data & Edit Log":
                     edit_nama = st.selectbox("Nama Karyawan", list_nama if list_nama else [curr.get("nama_karyawan")], index=idx_nama)
                     edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=0 if curr.get("sistem_gaji") == "Borongan" else 1)
                     
-                    idx_prod = DAFTAR_PRODUK.index(curr.get("jenis_produk")) if curr.get("jenis_produk") in DAFTAR_PRODUK else 0
-                    edit_produk = st.selectbox("Jenis Produk", DAFTAR_PRODUK, index=idx_prod)
-                    
-                    edit_jumlah = st.number_input("Jumlah Ball / Hasil", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
+                    edit_produk = st.text_input("Jenis / Divisi Produk", value=str(curr.get("jenis_produk", "")))
+                    edit_jumlah = st.number_input("Jumlah Ball / Hari", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
                     edit_nominal = st.number_input("Nominal Satuan (Rp)", value=int(curr.get("nominal_satuan", 0)), step=500)
                     
                     if st.form_submit_button("Update Data"):
