@@ -101,7 +101,7 @@ if menu == "Input Gaji & Produksi":
                 with col_i3:
                     item_qty = st.number_input("Jumlah (Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f")
                 with col_i4:
-                    item_nominal = st.number_input("Gaji per Ball (Rp)", min_value=0, value=1000, step=500)
+                    item_nominal = st.number_input("Gaji per Ball (Rp)", min_value=0, value=4000, step=500)
                 
                 btn_add = st.form_submit_button("➕ Tambahkan ke Daftar")
                 if btn_add:
