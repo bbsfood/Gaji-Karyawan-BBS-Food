@@ -7,7 +7,7 @@ import calendar
 import io
 
 # Page Config
-st.set_page_config(page_title="Gaji & Produksi BBS Food", layout="wide")
+st.set_page_config(page_title="Aplikasi Laporan BBS Food", layout="wide")
 
 # CSS khusus Struk Termal 58mm
 st.markdown("""
@@ -214,7 +214,7 @@ if menu == "Input Bungkusan Borongan":
                     st.success(f"Berhasil menyimpan hasil tim untuk {jumlah_anggota} anggota!")
                     st.rerun()
 # ----------------------------------------------------
-# MENU: INPUT BUNGKUSAN BORONGAN
+# MENU 2: INPUT BUNGKUSAN BORONGAN
 # ----------------------------------------------------
 elif menu == "Input Bungkusan Borongan":
     st.subheader("📦 Input Hasil Bungkusan Borongan")
@@ -293,7 +293,7 @@ elif menu == "Input Bungkusan Borongan":
         except Exception as e:
             st.error(f"Gagal menyimpan transaksi: {e}")
 # ----------------------------------------------------
-# MENU 2: PRESENSI HARIAN & NON-BORONGAN
+# MENU 3: PRESENSI HARIAN & NON-BORONGAN
 # ----------------------------------------------------
 elif menu == "Presensi Harian & Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
@@ -393,7 +393,7 @@ elif menu == "Presensi Harian & Non-Borongan":
                 st.success(f"✅ Presensi {nama_karyawan} disimpan! Gaji Hari Ini: **Rp {gaji_akhir:,.0f}** ({catatan})")
                 st.rerun()
 # ----------------------------------------------------
-# MENU 3: KASBON KARYAWAN
+# MENU 4: KASBON KARYAWAN
 # ----------------------------------------------------
 elif menu == "Kasbon Karyawan":
     st.subheader("💵 Pencatatan Kasbon / Pinjaman Karyawan")
@@ -454,7 +454,7 @@ elif menu == "Kasbon Karyawan":
                 st.info("Belum ada riwayat transaksi kasbon.")
 # ----------------------------------------------------
 # ----------------------------------------------------
-# MENU: STOK BAHAN BAKU & KEMASAN
+# MENU 5: STOK BAHAN BAKU & KEMASAN
 # ----------------------------------------------------
 elif menu == "Stok Bahan & Kemasan":
     st.subheader("📦 Manajemen Stok Bahan Baku & Kemasan")
@@ -632,7 +632,7 @@ elif menu == "Stok Bahan & Kemasan":
                         except Exception as e:
                             st.error(f"Gagal menghapus: {e}")
 # ----------------------------------------------------
-# MENU 5: MASTER KARYAWAN
+# MENU 6: MASTER KARYAWAN
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
@@ -709,7 +709,7 @@ elif menu == "Master Karyawan":
         else:
             st.info("Belum ada data karyawan terdaftar.")
 #----------------------------------------------------
-# MENU 6: DATA & EDIT LOG
+# MENU 7: DATA & EDIT LOG
 # ----------------------------------------------------
 elif menu == "Data & Edit Log":
     st.subheader("📋 Riwayat Data Log Produksi & Edit")
@@ -767,7 +767,7 @@ elif menu == "Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 7: REKAP & EKSPOR EXCEL
+# MENU 8: REKAP & EKSPOR EXCEL
 # ----------------------------------------------------
 elif menu == "Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -886,7 +886,7 @@ elif menu == "Rekap & Ekspor Excel":
                 rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
                 use_container_width=True)
 # ----------------------------------------------------
-# MENU 8: CETAK STRUK TERMAL
+# MENU 9: CETAK STRUK TERMAL
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
