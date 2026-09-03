@@ -73,6 +73,7 @@ menu = st.sidebar.radio("Pilih Menu", [
     "Input Bungkusan Borongan",
     "Presensi Harian & Non-Borongan",
     "Master Karyawan",
+    "Kasbon Karyawan",
     "Data & Edit Log", 
     "Rekap & Ekspor Excel", 
     "Cetak Struk Termal"
@@ -311,9 +312,69 @@ elif menu == "Presensi Harian & Non-Borongan":
                 supabase.table("LogHarian").insert(payload).execute()
                 st.success(f"✅ Presensi {nama_karyawan} disimpan! Gaji Hari Ini: **Rp {gaji_akhir:,.0f}** ({catatan})")
                 st.rerun()
+# ----------------------------------------------------
+# MENU 3: KASBON KARYAWAN
+# ----------------------------------------------------
+elif menu == "Kasbon Karyawan":
+    st.subheader("💵 Pencatatan Kasbon / Pinjaman Karyawan")
+    
+    karyawan_data = get_karyawan_list()
+    # Menampilkan hanya karyawan yang berstatus Aktif
+    list_karyawan_aktif = [k["nama_karyawan"] for k in karyawan_data if k.get("status", "Aktif") == "Aktif"]
+    
+    if not list_karyawan_aktif:
+        st.warning("⚠️ Belum ada data karyawan aktif.")
+    else:
+        col_ks1, col_ks2 = st.columns([1, 1])
+        
+        # TABEL INPUT KASBON BARU
+        with col_ks1:
+            st.markdown("##### ➕ Input Kasbon Baru (Bon Sabtu)")
+            with st.form("form_kasbon", clear_on_submit=True):
+                tgl_kasbon = st.date_input("Tanggal Kasbon", value=datetime.today())
+                nama_kasbon = st.selectbox("Pilih Karyawan", list_karyawan_aktif)
+                nominal_kasbon = st.number_input("Nominal Kasbon (Rp)", min_value=5000, step=5000, value=50000)
+                ket_kasbon = st.text_input("Keterangan / Catatan", value="Bon Sabtu")
+                
+                btn_simpan_kasbon = st.form_submit_button("💾 Simpan Kasbon", type="primary")
+                
+                if btn_simpan_kasbon:
+                    try:
+                        payload_kasbon = {
+                            "tanggal": str(tgl_kasbon),
+                            "nama_karyawan": nama_kasbon,
+                            "nominal": float(nominal_kasbon),
+                            "keterangan": ket_kasbon
+                        }
+                        supabase.table("Kasbon").insert(payload_kasbon).execute()
+                        st.success(f"✅ Kasbon Rp {nominal_kasbon:,.0f} untuk {nama_kasbon} berhasil dicatat!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan kasbon: {e}")
+
+        # TABEL RIWAYAT & HAPUS KASBON
+        with col_ks2:
+            st.markdown("##### 📋 Riwayat Transaksi Kasbon")
+            res_bon = supabase.table("Kasbon").select("*").order("id", desc=True).limit(20).execute()
+            
+            if res_bon.data:
+                df_bon = pd.DataFrame(res_bon.data)
+                st.dataframe(df_bon[["id", "tanggal", "nama_karyawan", "nominal", "keterangan"]], use_container_width=True)
+                
+                st.divider()
+                id_hapus_bon = st.number_input("Hapus Kasbon ID", min_value=1, step=1, value=1)
+                if st.button("🗑️ Hapus Kasbon"):
+                    try:
+                        supabase.table("Kasbon").delete().eq("id", int(id_hapus_bon)).execute()
+                        st.success(f"Kasbon ID {id_hapus_bon} berhasil dihapus!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus: {e}")
+            else:
+                st.info("Belum ada riwayat transaksi kasbon.")
 
 # ----------------------------------------------------
-# MENU 3: MASTER KARYAWAN
+# MENU 4: MASTER KARYAWAN
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
@@ -390,7 +451,7 @@ elif menu == "Master Karyawan":
         else:
             st.info("Belum ada data karyawan terdaftar.")
 #----------------------------------------------------
-# MENU 4: DATA & EDIT LOG
+# MENU 5: DATA & EDIT LOG
 # ----------------------------------------------------
 elif menu == "Data & Edit Log":
     st.subheader("📋 Riwayat Data Log Produksi & Edit")
@@ -448,7 +509,7 @@ elif menu == "Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 5: REKAP & EKSPOR EXCEL
+# MENU 6: REKAP & EKSPOR EXCEL
 # ----------------------------------------------------
 elif menu == "Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -510,9 +571,64 @@ elif menu == "Rekap & Ekspor Excel":
             )
         else:
             st.warning("Tidak ada transaksi pada bulan & tahun ini.")
-
 # ----------------------------------------------------
-# MENU 6: CETAK STRUK TERMAL
+# PERBAIKAN MENU REKAP: POTONG KASBON OTOMATIS
+# ----------------------------------------------------
+elif menu == "Rekap & Ekspor Excel":
+    st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
+    
+    col_b, col_t = st.columns(2)
+    with col_b:
+        bulan = st.selectbox("Pilih Bulan", range(1, 13), index=datetime.today().month - 1)
+    with col_t:
+        tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
+        
+    res = supabase.table("LogHarian").select("*").execute()
+    res_kasbon = supabase.table("Kasbon").select("*").execute()
+    
+    if res.data:
+        df = pd.DataFrame(res.data)
+        df["tanggal"] = pd.to_datetime(df["tanggal"])
+        df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
+        
+        # Filter Data Kasbon
+        if res_kasbon.data:
+            df_k = pd.DataFrame(res_kasbon.data)
+            df_k["tanggal"] = pd.to_datetime(df_k["tanggal"])
+            df_k_filtered = df_k[(df_k["tanggal"].dt.month == bulan) & (df_k["tanggal"].dt.year == tahun)]
+        else:
+            df_k_filtered = pd.DataFrame(columns=["nama_karyawan", "nominal"])
+        
+        if not df_filtered.empty:
+            st.divider()
+            st.markdown("### 1. Rekapitulasi Gaji Karyawan (Setelah Potongan Kasbon)")
+            
+            # Hitung Gaji Kotor
+            rekap_gaji = df_filtered.groupby(["nama_karyawan", "sistem_gaji"]).agg(
+                total_absensi=('tanggal', 'nunique'),
+                total_hasil=('jumlah_borongan', 'sum'),
+                gaji_kotor=('total_gaji', 'sum')
+            ).reset_index()
+            
+            # Hitung Total Kasbon per Karyawan
+            if not df_k_filtered.empty:
+                rekap_bon = df_k_filtered.groupby("nama_karyawan")["nominal"].sum().reset_index()
+                rekap_bon.rename(columns={"nominal": "total_kasbon"}, inplace=True)
+                rekap_gaji = pd.merge(rekap_gaji, rekap_bon, on="nama_karyawan", how="left")
+            else:
+                rekap_gaji["total_kasbon"] = 0
+                
+            rekap_gaji["total_kasbon"] = rekap_gaji["total_kasbon"].fillna(0)
+            
+            # Gaji Bersih = Gaji Kotor - Total Kasbon
+            rekap_gaji["gaji_bersih"] = rekap_gaji["gaji_kotor"] - rekap_gaji["total_kasbon"]
+            
+            # Tampilkan Tabel
+            st.dataframe(
+                rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
+                use_container_width=True
+# ----------------------------------------------------
+# MENU 7: CETAK STRUK TERMAL
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
