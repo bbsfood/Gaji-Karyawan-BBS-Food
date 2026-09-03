@@ -213,66 +213,84 @@ if menu == "Input Bungkusan Borongan":
                     st.success(f"Berhasil menyimpan hasil tim untuk {jumlah_anggota} anggota!")
                     st.rerun()
 # ----------------------------------------------------
-# PADA MENU: Input Bungkusan Borongan
+# MENU: INPUT BUNGKUSAN BORONGAN
 # ----------------------------------------------------
+elif menu == "Input Bungkusan Borongan":
+    st.subheader("📦 Input Hasil Bungkusan Borongan")
+    
+    with st.form("form_borongan", clear_on_submit=True):
+        tgl_borongan = st.date_input("Tanggal", value=datetime.today())
+        
+        # Ambil daftar karyawan aktif
+        karyawan_data = get_karyawan_list()
+        list_karyawan_aktif = [k["nama_karyawan"] for k in karyawan_data if k.get("status", "Aktif") == "Aktif"]
+        
+        nama_borongan = st.selectbox("Pilih Karyawan", list_karyawan_aktif)
+        jenis_produk = st.selectbox("Jenis Produk", ["Makaroni", "Stik Bawang", "Seblak", "Kacang Bawang", "Kerupuk"])
+        ukuran_bal = st.selectbox("Ukuran Bal", ["Bal Besar (Isi 12 Pack)", "Bal Sedang", "Bal Kecil"])
+        
+        jumlah_bal = st.number_input("Jumlah Bal", min_value=0.5, step=0.5, value=1.0)
+        tarif_bal = st.number_input("Tarif Upah per Bal (Rp)", min_value=1000, step=500, value=2000)
+        
+        total_upah = jumlah_bal * tarif_bal
+        st.info(f"💰 Total Upah Borongan: **Rp {total_upah:,.0f}**")
+        
+        # 1. DEKLARASIKAN TOMBOL DAHULU (Penting!)
+        btn_simpan_borongan = st.form_submit_button("💾 Simpan Hasil Borongan", type="primary")
 
-if btn_simpan_borongan:
-    try:
-        # 1. Simpan Transaksi Log Borongan (Kode Lama)
-        payload_borongan = {
-            "tanggal": str(tgl_borongan),
-            "nama_karyawan": nama_borongan,
-            "sistem_gaji": "Borongan",
-            "jenis_produk": jenis_produk,
-            "ukuran_bal": ukuran_bal,
-            "jumlah_borongan": float(jumlah_bal),
-            "upah_per_bal": float(tarif_bal),
-            "total_gaji": float(total_upah)
-        }
-        supabase.table("LogHarian").insert(payload_borongan).execute()
-        
-        # ----------------------------------------------------
-        # FITUR BOM (BILL OF MATERIALS) - POTONG MULTI STOK
-        # ----------------------------------------------------
-        jml_bal = float(jumlah_bal)
-        
-        # Resep Komposisi Kemasan per 1 Bal
-        kebutuhan_kemasan = [
-            {"kata_kunci": "Bungkus Makaroni 18g", "jumlah_per_bal": 120 * jml_bal, "satuan": "Pcs"},
-            {"kata_kunci": "Bungkus Pack", "jumlah_per_bal": 10 * jml_bal, "satuan": "Pcs"},
-            {"kata_kunci": "Bungkus Bal", "jumlah_per_bal": 1 * jml_bal, "satuan": "Pcs"}
-        ]
-        
-        res_stok_all = supabase.table("StokBahan").select("*").execute()
-        data_stok_db = res_stok_all.data if res_stok_all.data else []
-        
-        for item_resep in kebutuhan_kemasan:
-            # Cari item di database yang namanya cocok dengan kata kunci resep
-            match_bahan = next((b for b in data_stok_db if item_resep["kata_kunci"].lower() in b["nama_bahan"].lower()), None)
+    # 2. BARU PROSES LOGIKA DENGAN IF (Luar / Dalam Form)
+    if btn_simpan_borongan:
+        try:
+            # A. Simpan Log Transaksi Borongan ke Supabase
+            payload_borongan = {
+                "tanggal": str(tgl_borongan),
+                "nama_karyawan": nama_borongan,
+                "sistem_gaji": "Borongan",
+                "jenis_produk": jenis_produk,
+                "ukuran_bal": ukuran_bal,
+                "jumlah_borongan": float(jumlah_bal),
+                "upah_per_bal": float(tarif_bal),
+                "total_gaji": float(total_upah)
+            }
+            supabase.table("LogHarian").insert(payload_borongan).execute()
             
-            if match_bahan:
-                stok_lama = float(match_bahan["stok_saat_ini"])
-                pemakaian = float(item_resep["jumlah_per_bal"])
-                stok_baru = stok_lama - pemakaian
+            # B. Potong Stok Kemasan Otomatis (BOM)
+            jml_bal = float(jumlah_bal)
+            kebutuhan_kemasan = [
+                {"kata_kunci": "Bungkus Makaroni 18g", "jumlah_per_bal": 120 * jml_bal},
+                {"kata_kunci": "Bungkus Pack", "jumlah_per_bal": 10 * jml_bal},
+                {"kata_kunci": "Bungkus Bal", "jumlah_per_bal": 1 * jml_bal}
+            ]
+            
+            res_stok_all = supabase.table("StokBahan").select("*").execute()
+            data_stok_db = res_stok_all.data if res_stok_all.data else []
+            
+            for item_resep in kebutuhan_kemasan:
+                match_bahan = next((b for b in data_stok_db if item_resep["kata_kunci"].lower() in b["nama_bahan"].lower()), None)
                 
-                # 1. Update sisa stok baru
-                supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", match_bahan["id"]).execute()
-                
-                # 2. Catat Log Keluar Kemasan
-                payload_log_stok = {
-                    "tanggal": str(tgl_borongan),
-                    "nama_bahan": match_bahan["nama_bahan"],
-                    "jenis_transaksi": "Keluar (Produksi/Rusak)",
-                    "jumlah": pemakaian,
-                    "keterangan": f"Pemakaian Otomatis ({jml_bal:.0f} Bal {jenis_produk} oleh {nama_borongan})"
-                }
-                supabase.table("LogStok").insert(payload_log_stok).execute()
-        
-        st.success(f"✅ Borongan berhasil disimpan! Stok 120 Pcs Bungkus Kecil, 10 Pcs Pack, dan 1 Pcs Bal untuk {jml_bal:.0f} Bal otomatis berkurang.")
-        st.rerun()
+                if match_bahan:
+                    stok_lama = float(match_bahan["stok_saat_ini"])
+                    pemakaian = float(item_resep["jumlah_per_bal"])
+                    stok_baru = stok_lama - pemakaian
+                    
+                    # Update Stok
+                    supabase.table("StokBahan").update({"stok_saat_ini": stok_baru}).eq("id", match_bahan["id"]).execute()
+                    
+                    # Catat Log Stok
+                    payload_log_stok = {
+                        "tanggal": str(tgl_borongan),
+                        "nama_bahan": match_bahan["nama_bahan"],
+                        "jenis_transaksi": "Keluar (Produksi/Rusak)",
+                        "jumlah": pemakaian,
+                        "keterangan": f"Pemakaian Otomatis ({jml_bal:.0f} Bal {jenis_produk} oleh {nama_borongan})"
+                    }
+                    supabase.table("LogStok").insert(payload_log_stok).execute()
+            
+            st.success(f"✅ Data borongan {nama_borongan} berhasil disimpan & Stok Kemasan otomatis dipotong!")
+            st.rerun()
 
-    except Exception as e:
-        st.error(f"Gagal menyimpan transaksi: {e}")
+        except Exception as e:
+            st.error(f"Gagal menyimpan transaksi: {e}")
 # ----------------------------------------------------
 # MENU 2: PRESENSI HARIAN & NON-BORONGAN
 # ----------------------------------------------------
