@@ -359,6 +359,47 @@ elif menu == "Master Karyawan":
                 st.rerun()
         else:
             st.info("Belum ada data karyawan.")
+            import streamlit as st
+
+# ... (kode aplikasi Anda)
+
+# Mengambil daftar karyawan dari Supabase
+res = supabase.table("MasterKaryawan").select("*").execute()
+data_karyawan = res.data
+
+if data_karyawan:
+    st.subheader("✏️ Edit Data Karyawan Lama")
+    
+    # Pilih karyawan yang ingin diubah
+    list_nama = [k["nama_karyawan"] for k in data_karyawan]
+    karyawan_pilihan = st.selectbox("Pilih Karyawan yang ingin diupdate:", list_nama)
+    
+    # Cari data detail karyawan terpilih
+    detail_k = next((item for item in data_karyawan if item["nama_karyawan"] == karyawan_pilihan), None)
+    
+    if detail_k:
+        with st.form("form_edit_karyawan"):
+            divisi_opsi = ["Produksi", "Pembungkus", "Packing Online", "Snack", "Admin Pabrik"]
+            
+            # Cari index awal agar selectbox otomatis memilih divisi saat ini
+            idx_div = divisi_opsi.index(detail_k.get("divisi")) if detail_k.get("divisi") in divisi_opsi else 0
+            
+            divisi_edit = st.selectbox("Divisi", divisi_opsi, index=idx_div)
+            jabatan_edit = st.text_input("Jabatan", value=detail_k.get("jabatan") or "Anggota")
+            
+            btn_update = st.form_submit_button("💾 Simpan Perubahan")
+            
+            if btn_update:
+                try:
+                    supabase.table("MasterKaryawan").update({
+                        "divisi": divisi_edit,
+                        "jabatan": jabatan_edit
+                    }).eq("id", detail_k["id"]).execute()
+                    
+                    st.success(f"Data {karyawan_pilihan} berhasil diperbarui!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal memperbarui data: {e}")
 
 # ----------------------------------------------------
 # MENU 4: DATA & EDIT LOG
