@@ -192,35 +192,72 @@ elif menu == "Rekap Bulanan":
 # MENU 4: CETAK STRUK TERMAL 58MM
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
-    st.subheader("🖨️ Cetak Struk Gaji (58mm)")
+    st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
     
-    res = supabase.table("LogHarian").select("*").order("id", desc=True).limit(20).execute()
+    # 1. Filter Bulan, Tahun, dan Nama Karyawan
+    col_b, col_t = st.columns(2)
+    with col_b:
+        bulan = st.selectbox("Pilih Bulan", range(1, 13), index=datetime.today().month - 1)
+    with col_t:
+        tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
+        
+    res = supabase.table("LogHarian").select("*").execute()
+    
     if res.data:
         df = pd.DataFrame(res.data)
-        selected_id = st.selectbox("Pilih ID Transaksi untuk Dicetak", df["id"])
+        df["tanggal"] = pd.to_datetime(df["tanggal"])
         
-        item = df[df["id"] == selected_id].iloc[0]
+        # Filter data berdasarkan bulan & tahun
+        df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
         
-        # Tampilan preview Struk 58mm
-        struk_html = f"""
-        <div class="thermal-receipt">
-            <center>
-                <strong>BBS FOOD SRAGEN</strong><br>
-                Jl. Jatibatur, Gemolong<br>
-                --------------------------------
-            </center>
-            Tgl   : {item['tanggal']}<br>
-            Nama  : {item['nama_karyawan']}<br>
-            Sistem: {item.get('sistem_gaji', 'Borongan')}<br>
-            --------------------------------<br>
-            Qty   : {item['jumlah_borongan']} @ Rp {item.get('nominal_satuan', 0):,.0f}<br>
-            --------------------------------<br>
-            <strong>TOTAL : Rp {item['total_gaji']:,.0f}</strong><br>
-            --------------------------------<br>
-            <center>
-                <i>~ Terima Kasih ~</i>
-            </center>
-        </div>
-        """
-        st.markdown(struk_html, unsafe_allow_html=True)
-        st.caption("Gunakan tombol Print di browser (Ctrl+P) atau sambungkan browser Android ke aplikasi Printer Bluetooth thermal 58mm.")
+        if not df_filtered.empty:
+            # Ambil daftar nama unik karyawan yang ada di bulan tersebut
+            daftar_karyawan = df_filtered["nama_karyawan"].unique()
+            pilih_karyawan = st.selectbox("Pilih Nama Karyawan", daftar_karyawan)
+            
+            # Filter khusus karyawan yang dipilih
+            df_karyawan = df_filtered[df_filtered["nama_karyawan"] == pilih_karyawan]
+            
+            # Hitung Rekap
+            sistem_gaji = df_karyawan["sistem_gaji"].iloc[0] if "sistem_gaji" in df_karyawan.columns else "Borongan"
+            total_qty = df_karyawan["jumlah_borongan"].sum()
+            total_gaji = df_karyawan["total_gaji"].sum()
+            total_hari_kerja = df_karyawan["tanggal"].nunique()
+            
+            nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                          "Juli", "Agustus", "September", "Oktober", "November", "Desember"][bulan - 1]
+            
+            st.divider()
+            
+            # Tampilan preview Struk 58mm Rekap Bulanan
+            label_qty = "Total Ball/Pcs" if sistem_gaji == "Borongan" else "Total Hari Kerja"
+            
+            struk_html = f"""
+            <div class="thermal-receipt">
+                <center>
+                    <strong>BBS FOOD SRAGEN</strong><br>
+                    Jl. Jatibatur, Gemolong<br>
+                    --------------------------------<br>
+                    <strong>SLIP GAJI BULANAN</strong><br>
+                    Periode: {nama_bulan} {tahun}<br>
+                    --------------------------------
+                </center>
+                Nama   : {pilih_karyawan}<br>
+                Sistem : {sistem_gaji}<br>
+                Absensi: {total_hari_kerja} Hari Masuk<br>
+                --------------------------------<br>
+                {label_qty} : {total_qty:g}<br>
+                --------------------------------<br>
+                <strong>TOTAL GAJI: Rp {total_gaji:,.0f}</strong><br>
+                --------------------------------<br>
+                <center>
+                    <i>~ Terima Kasih ~</i>
+                </center>
+            </div>
+            """
+            st.markdown(struk_html, unsafe_allow_html=True)
+            st.caption("Gunakan fitur Print browser (Ctrl+P atau menu Bagikan/Cetak di HP) untuk mencetak ke printer thermal 58mm.")
+        else:
+            st.warning("Tidak ada log data transaksi pada bulan & tahun yang dipilih.")
+    else:
+        st.info("Belum ada data log harian di database.")
