@@ -267,7 +267,21 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
     )
 
     karyawan_data = get_karyawan_list()
-    
+    # Filter karyawan harian/aktif (KARYAWAN BORONGAN/PEMBUNGKUS DIBUANG DARI MENU INI)
+    harian_karyawan = []
+    for k in karyawan_data:
+        status_k = str(k.get("status") or k.get("status_karyawan") or "Aktif").strip().capitalize()
+        if status_k != "Aktif":
+            continue
+            
+        div = str(k.get("divisi", "") or "").lower().strip()
+        
+        # JIKA ADA KATA PEMBUNGKUS / BORONGAN, SKIP (KARENA MASUK MENU BORONGAN)
+        if "pembungkus" in div or "borongan" in div or "bungkus" in div:
+            continue
+            
+        harian_karyawan.append(k)
+        
     # Filter karyawan harian/aktif
     harian_karyawan = []
     for k in karyawan_data:
@@ -283,7 +297,73 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                 harian_karyawan.append(k)
         else:
             harian_karyawan.append(k)
+            with st.form("form_presensi_harian", clear_on_submit=True):
+            col_p1, col_p2 = st.columns(2)
+            
+            with col_p1:
+                pilihan_karyawan = st.selectbox(
+                    "Pilih Karyawan Harian", 
+                    options=harian_karyawan, 
+                    format_func=lambda x: f"{x.get('nama_karyawan', '-')} — Divisi: {x.get('divisi', '-')}"
+                )
+                
+                nama_karyawan = str(pilihan_karyawan.get('nama_karyawan', '') or '').strip()
+                divisi_raw = str(pilihan_karyawan.get('divisi', '') or '').strip()
+                jabatan_raw = str(pilihan_karyawan.get('jabatan') or pilihan_karyawan.get('jabatan_karyawan') or 'Anggota').strip()
 
+                divisi_lower = divisi_raw.lower()
+                jabatan_lower = jabatan_raw.lower()
+                is_kepala_regu = ("kepala" in jabatan_lower or "spv" in jabatan_lower or "leader" in jabatan_lower)
+
+                # DETERMINASI GAJI HARIAN
+                if "brondong" in divisi_lower:
+                    kategori_pilihan = "BRONDONG"
+                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
+                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
+                elif "admin" in divisi_lower:
+                    kategori_pilihan = "ADMIN"
+                    gaji_std_default = GAJI_HARIAN_TETAP_ADMIN
+                elif "abk" in divisi_lower or "kandang" in divisi_lower:
+                    kategori_pilihan = "ABK"
+                    gaji_std_default = GAJI_BULANAN_ANGGOTA / hari_kerja_abk
+                else: # Pemasak Snack, Packing Online, Umum
+                    kategori_pilihan = "FLAT_HARIAN"
+                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
+                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
+
+                st.info(f"📌 **Divisi:** {divisi_raw}\n\n💵 **Tarif Harian:** Rp {gaji_std_default:,.0f}/hari")
+
+            with col_p2:
+                if kategori_pilihan == "BRONDONG":
+                    st.markdown("##### 🎯 Target & Hasil Brondong")
+                    hasil_bal = st.number_input("Hasil Brondong Hari Ini (Bal)", min_value=0, value=50, step=1)
+                    if is_kepala_regu:
+                        gaji_akhir = gaji_std_default
+                    else:
+                        gaji_akhir = gaji_std_default * (hasil_bal / 50)
+                else:
+                    st.markdown("##### 📌 Presensi Harian Flat")
+                    gaji_akhir = gaji_std_default
+                    st.success(f"✅ **Gaji Harian Diterima:** Rp {gaji_akhir:,.0f}")
+
+            btn_simpan_harian = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
+
+            if btn_simpan_harian:
+                payload = {
+                    "tanggal": str(tgl_presensi),
+                    "nama_karyawan": nama_karyawan,
+                    "sistem_gaji": "Harian",
+                    "jenis_produk": divisi_raw,
+                    "ukuran_bal": "-",
+                    "jumlah_borongan": float(hasil_bal) if kategori_pilihan == "BRONDONG" else 1.0,
+                    "nominal_satuan": int(gaji_std_default),
+                    "gaji_pokok": 0,
+                    "total_gaji": float(gaji_akhir)
+                }
+                supabase.table("LogHarian").insert(payload).execute()
+                st.success(f"✅ Presensi {nama_karyawan} disimpan!")
+                st.rerun()
+                
     if not harian_karyawan:
         st.warning("⚠️ Belum ada data karyawan harian aktif.")
     else:
