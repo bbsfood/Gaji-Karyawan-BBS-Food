@@ -68,7 +68,7 @@ def get_karyawan_list():
 # Sidebar Navigasi
 menu = st.sidebar.radio("Pilih Menu", [
     "Input Bungkusan Borongan",
-    "Presensi Pemasak Brondong (Harian)",
+    "Presensi Harian Non-Borongan",
     "Kasbon Karyawan",
     "Master Karyawan",
     "Data & Edit Log", 
@@ -211,7 +211,7 @@ if menu == "Input Bungkusan Borongan":
                     st.rerun()
 
 # ----------------------------------------------------
-# MENU 2: PRESENSI HARIAN & NON-BORONGAN (BRONDONG & SNACK)
+# MENU 2: PRESENSI HARIAN NON-BORONGAN
 # ----------------------------------------------------
 elif menu == "Presensi Harian & Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
