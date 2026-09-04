@@ -209,7 +209,7 @@ if menu == "Input Bungkusan Borongan":
                     supabase.table("LogHarian").insert(data_tim_to_insert).execute()
                     st.success(f"Berhasil menyimpan hasil {produk_tim} untuk {jumlah_anggota} anggota tim!")
                     st.rerun()
-
+                    
 # ----------------------------------------------------
 # MENU 2: PRESENSI HARIAN NON-BORONGAN
 # ----------------------------------------------------
@@ -220,7 +220,6 @@ GAJI_BULANAN_KEPALA_REGU = 2500000      # Gaji acuan Kepala Regu Bulanan
 GAJI_BULANAN_ANGGOTA = 2377000          # Gaji acuan Anggota Bulanan (Pemasak Brondong & Snack)
 GAJI_BULANAN_PACKING_ONLINE = 2000000   # Gaji acuan Packing Online Bulanan
 GAJI_HARIAN_TETAP_ADMIN = 100000        # Gaji flat Admin Pabrik per hari
-
 elif menu == "Presensi Harian Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
