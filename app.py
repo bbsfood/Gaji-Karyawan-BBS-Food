@@ -248,21 +248,20 @@ if menu == "Input Bungkusan Borongan":
                     st.rerun()
                     
 # ====================================================
-# MENU 2: PRESENSI HARIAN & NON-BORONGAN (VERSI PERBAIKAN)
+# MENU 2: PRESENSI HARIAN & NON-BORONGAN 
 # ====================================================
 if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
-    # 1. TANGGAL KERJA DILUAR FORM (Rerender otomatis jika tanggal diubah)
+    # 1. TANGGAL KERJA DILUAR FORM
     tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
     thn = tgl_presensi.year
     bln = tgl_presensi.month
     
-    # 2. HITUNG HARI KERJA EFEKTIF DINAMIS BERDASARKAN TANGGAL DIPILIH
+    # 2. HITUNG HARI KERJA EFEKTIF
     hari_kerja_pabrik = get_hari_kerja_efektif(thn, bln)
     hari_kerja_abk = get_hari_kerja_abk(thn, bln)
 
-    # Indikator Tanggal Aktif
     st.caption(
         f"📅 **Akses Bulan {bln}/{thn}:** "
         f"Pabrik = **{hari_kerja_pabrik} Hari Kerja** (Libur Minggu) | "
@@ -272,10 +271,10 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
     karyawan_data = get_karyawan_list()
     
     # FILTER KARYAWAN UNTUK PRESENSI HARIAN:
-    # Loloskan semua divisi non-borongan + Bungkus Snack (Bungkus Brondong murni borongan)
     harian_karyawan = []
     for k in karyawan_data:
-        if str(k.get("status", "Aktif")).strip().capitalize() != "Aktif":
+        status_k = str(k.get("status") or k.get("status_karyawan") or "Aktif").strip().capitalize()
+        if status_k != "Aktif":
             continue
             
         div = str(k.get("divisi", "") or "").lower().strip()
@@ -297,26 +296,33 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                 pilihan_karyawan = st.selectbox(
                     "Pilih Karyawan", 
                     options=harian_karyawan, 
-                    format_func=lambda x: f"{x.get('nama_karyawan', '-')} — {x.get('divisi', '-')} ({x.get('jabatan', 'Anggota')})"
+                    format_func=lambda x: f"{x.get('nama_karyawan', '-')} — {x.get('divisi', '-')} ({x.get('jabatan') or x.get('jabatan_karyawan') or 'Anggota'})"
                 )
                 
-                # Normalisasi string presisi (Case-Insensitive & Bebas Spasi)
+                # Normalisasi string & ekstraksi kolom dinamis Supabase
                 nama_karyawan = str(pilihan_karyawan.get('nama_karyawan', '') or '').strip()
                 divisi_raw = str(pilihan_karyawan.get('divisi', '') or '').strip()
-                jabatan_raw = str(pilihan_karyawan.get('jabatan', 'Anggota') or 'Anggota').strip()
+                
+                # Ambil jabatan dari kolom 'jabatan' atau 'jabatan_karyawan'
+                jabatan_raw = str(
+                    pilihan_karyawan.get('jabatan') or 
+                    pilihan_karyawan.get('jabatan_karyawan') or 
+                    'Anggota'
+                ).strip()
 
                 nama_lower = nama_karyawan.lower()
                 divisi_lower = divisi_raw.lower()
                 jabatan_lower = jabatan_raw.lower()
 
-                # Pengecekan Presisi Kepala Regu / SPV
-                is_kepala_regu = ("kepala" in jabatan_lower or "spv" in jabatan_lower)
+                # PENGECEKAN KEPALA REGU / SPV YANG SANGAT PRESISI
+                # Hanya bernilai True jika secara eksplisit mengandung "kepala" atau "spv"
+                is_kepala_regu = ("kepala" in jabatan_lower or "spv" in jabatan_lower or "leader" in jabatan_lower)
 
                 # ----------------------------------------------------
                 # PENENTUAN TARIF HARIAN BERDASARKAN DIVISI & JABATAN
                 # ----------------------------------------------------
                 
-                # A. ABK KANDANG (SUTRIS / ABK)
+                # A. ABK KANDANG
                 if "abk" in divisi_lower or "kandang" in divisi_lower:
                     gaji_std_default = GAJI_BULANAN_ANGGOTA / hari_kerja_abk
                     st.info(
@@ -325,7 +331,7 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                         f"📌 **Tarif Harian:** Rp {GAJI_BULANAN_ANGGOTA:,.0f} / {hari_kerja_abk} Hari = **Rp {gaji_std_default:,.0f}/hari**"
                     )
 
-                # B. ADMIN PABRIK (NILA / ADMIN)
+                # B. ADMIN PABRIK
                 elif "admin" in divisi_lower:
                     gaji_std_default = GAJI_HARIAN_TETAP_ADMIN
                     st.info(f"**Tipe:** Admin Pabrik ({nama_karyawan}) - Flat Harian Rp {gaji_std_default:,.0f}")
@@ -368,7 +374,7 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                         f"(Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari Kerja)"
                     )
 
-                # G. FALLBACK UMUM (Jika Divisi Tidak Terkategori)
+                # G. FALLBACK UMUM
                 else:
                     gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
                     gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
@@ -408,7 +414,6 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
             btn_simpan_harian = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
 
             if btn_simpan_harian:
-                # LOGIKA PENENTUAN TOTAL GAJI SAAT SIMPAN
                 if "brondong" in divisi_lower:
                     if is_kepala_regu:
                         gaji_akhir = gaji_std_default
@@ -447,7 +452,6 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                     gaji_akhir = gaji_std_default
                     catatan = "Presensi Harian."
 
-                # Simpan Ke Database Supabase
                 payload = {
                     "tanggal": str(tgl_presensi),
                     "nama_karyawan": nama_karyawan,
