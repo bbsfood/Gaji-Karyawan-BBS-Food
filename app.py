@@ -253,24 +253,22 @@ if menu == "Input Bungkusan Borongan":
 if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
-    # 1. TANGGAL KERJA DILUAR FORM
     tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
     thn = tgl_presensi.year
     bln = tgl_presensi.month
     
-    # 2. HITUNG HARI KERJA EFEKTIF
     hari_kerja_pabrik = get_hari_kerja_efektif(thn, bln)
     hari_kerja_abk = get_hari_kerja_abk(thn, bln)
 
     st.caption(
         f"📅 **Akses Bulan {bln}/{thn}:** "
-        f"Pabrik = **{hari_kerja_pabrik} Hari Kerja** (Libur Minggu) | "
-        f"ABK Kandang = **{hari_kerja_abk} Hari Kerja** (Libur 2x)"
+        f"Pabrik = **{hari_kerja_pabrik} Hari Kerja** | "
+        f"ABK Kandang = **{hari_kerja_abk} Hari Kerja**"
     )
 
     karyawan_data = get_karyawan_list()
     
-    # FILTER KARYAWAN UNTUK PRESENSI HARIAN:
+    # Filter karyawan harian/aktif
     harian_karyawan = []
     for k in karyawan_data:
         status_k = str(k.get("status") or k.get("status_karyawan") or "Aktif").strip().capitalize()
@@ -296,176 +294,240 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                 pilihan_karyawan = st.selectbox(
                     "Pilih Karyawan", 
                     options=harian_karyawan, 
-                    format_func=lambda x: f"{x.get('nama_karyawan', '-')} — {x.get('divisi', '-')} ({x.get('jabatan') or x.get('jabatan_karyawan') or 'Anggota'})"
+                    format_func=lambda x: f"{x.get('nama_karyawan', '-')} — Divisi: {x.get('divisi', '-')} ({x.get('jabatan') or x.get('jabatan_karyawan') or 'Anggota'})"
                 )
                 
-                # Normalisasi string & ekstraksi kolom dinamis Supabase
                 nama_karyawan = str(pilihan_karyawan.get('nama_karyawan', '') or '').strip()
                 divisi_raw = str(pilihan_karyawan.get('divisi', '') or '').strip()
-                
-                # Ambil jabatan dari kolom 'jabatan' atau 'jabatan_karyawan'
-                jabatan_raw = str(
-                    pilihan_karyawan.get('jabatan') or 
-                    pilihan_karyawan.get('jabatan_karyawan') or 
-                    'Anggota'
-                ).strip()
+                jabatan_raw = str(pilihan_karyawan.get('jabatan') or pilihan_karyawan.get('jabatan_karyawan') or 'Anggota').strip()
 
-                nama_lower = nama_karyawan.lower()
                 divisi_lower = divisi_raw.lower()
                 jabatan_lower = jabatan_raw.lower()
 
-                # PENGECEKAN KEPALA REGU / SPV YANG SANGAT PRESISI
-                # Hanya bernilai True jika secara eksplisit mengandung "kepala" atau "spv"
                 is_kepala_regu = ("kepala" in jabatan_lower or "spv" in jabatan_lower or "leader" in jabatan_lower)
+                label_jabatan = "Kepala Regu / SPV" if is_kepala_regu else "Anggota"
 
-                # ----------------------------------------------------
-                # PENENTUAN TARIF HARIAN BERDASARKAN DIVISI & JABATAN
-                # ----------------------------------------------------
-                
-                # A. ABK KANDANG
-                if "abk" in divisi_lower or "kandang" in divisi_lower:
+                # ------------------------------------------------------------------
+                # PENENTUAN KATEGORI & DRAFT GAJI DEFAULTS
+                # ------------------------------------------------------------------
+                if "pembungkus" in divisi_lower:
+                    kategori_pilihan = "PEMBUNGKUS_SNACK"
+                    gaji_std_default = GAJI_POKOK_HARIAN_PEMBUNGKUS  # Rp 10.000
+                    st.info(
+                        f"**Divisi:** Pembungkus Snack\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan}\n"
+                        f"📌 **Gaji Pokok Harian:** Rp {gaji_std_default:,.0f} (Jika ada bungkus Non-Brondong hari ini)"
+                    )
+
+                elif "brondong" in divisi_lower:
+                    kategori_pilihan = "BRONDONG"
+                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
+                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
+                    st.info(
+                        f"**Divisi:** Produksi Brondong\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan} ({label_jabatan})\n"
+                        f"🎯 **Gaji Acuan 100% (50 Bal):** Rp {gaji_std_default:,.0f}/hari"
+                    )
+
+                elif "snack" in divisi_lower:
+                    kategori_pilihan = "PRODUKSI_SNACK"
+                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
+                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
+                    st.info(
+                        f"**Divisi:** Pemasak / Produksi Snack\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan} ({label_jabatan})\n"
+                        f"📌 **Flat Harian:** Rp {gaji_std_default:,.0f}/hari"
+                    )
+
+                elif "admin" in divisi_lower:
+                    kategori_pilihan = "ADMIN"
+                    gaji_std_default = GAJI_HARIAN_TETAP_ADMIN
+                    st.info(
+                        f"**Divisi:** Admin Pabrik\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan}\n"
+                        f"📌 **Flat Harian:** Rp {gaji_std_default:,.0f}/hari"
+                    )
+
+                elif "packing" in divisi_lower or "online" in divisi_lower:
+                    kategori_pilihan = "PACKING_ONLINE"
+                    gaji_std_default = GAJI_BULANAN_PACKING_ONLINE / hari_kerja_pabrik
+                    st.info(
+                        f"**Divisi:** Packing Online\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan}\n"
+                        f"📌 **Tarif Harian:** Rp {gaji_std_default:,.0f}/hari"
+                    )
+
+                elif "abk" in divisi_lower or "kandang" in divisi_lower:
+                    kategori_pilihan = "ABK"
                     gaji_std_default = GAJI_BULANAN_ANGGOTA / hari_kerja_abk
                     st.info(
-                        f"**Tipe:** ABK Kandang ({nama_karyawan})\n\n"
-                        f"📅 **Hari Kerja Bulan Ini:** {hari_kerja_abk} Hari\n"
-                        f"📌 **Tarif Harian:** Rp {GAJI_BULANAN_ANGGOTA:,.0f} / {hari_kerja_abk} Hari = **Rp {gaji_std_default:,.0f}/hari**"
+                        f"**Divisi:** ABK Kandang\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan}\n"
+                        f"📌 **Tarif Harian:** Rp {gaji_std_default:,.0f}/hari"
                     )
 
-                # B. ADMIN PABRIK
-                elif "admin" in divisi_lower:
-                    gaji_std_default = GAJI_HARIAN_TETAP_ADMIN
-                    st.info(f"**Tipe:** Admin Pabrik ({nama_karyawan}) - Flat Harian Rp {gaji_std_default:,.0f}")
-
-                # C. PACKING ONLINE
-                elif "packing" in divisi_lower or "online" in divisi_lower:
-                    gaji_std_default = GAJI_BULANAN_PACKING_ONLINE / hari_kerja_pabrik
-                    st.info(f"**Tipe:** Packing Online ({nama_karyawan})\n\n📌 **Tarif Harian:** Rp {GAJI_BULANAN_PACKING_ONLINE:,.0f} / {hari_kerja_pabrik} Hari = **Rp {gaji_std_default:,.0f}/hari**")
-
-                # D. BUNGKUS SNACK
-                elif "pembungkus" in divisi_lower or ("snack" in divisi_lower and "produksi" not in divisi_lower and "pemasak" not in divisi_lower):
-                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
-                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
-                    label_jabatan = "Kepala Regu / SPV" if is_kepala_regu else "Anggota"
-                    st.info(
-                        f"**Tipe:** Bungkus Snack - **{label_jabatan}** ({nama_karyawan})\n\n"
-                        f"📌 **Flat Harian:** Rp {gaji_std_default:,.0f} / hari "
-                        f"(Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari Kerja)"
-                    )
-
-                # E. PRODUKSI BRONDONG (EKSPLISIT CEK 'BRONDONG')
-                elif "brondong" in divisi_lower:
-                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
-                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
-                    label_jabatan = "Kepala Regu / SPV" if is_kepala_regu else "Anggota"
-                    st.info(
-                        f"**Tipe:** Pemasak Brondong - **{label_jabatan}** ({nama_karyawan})\n\n"
-                        f"🎯 **Gaji Acuan 100% (50 Bal):** Rp {gaji_std_default:,.0f} "
-                        f"(Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari Kerja)"
-                    )
-
-                # F. PRODUKSI SNACK / PEMASAK SNACK (EKSPLISIT CEK 'SNACK')
-                elif "snack" in divisi_lower:
-                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
-                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
-                    label_jabatan = "Kepala Regu / SPV" if is_kepala_regu else "Anggota"
-                    st.info(
-                        f"**Tipe:** Pemasak Snack - **{label_jabatan}** ({nama_karyawan})\n\n"
-                        f"📌 **Flat Harian:** Rp {gaji_std_default:,.0f} / hari "
-                        f"(Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari Kerja)"
-                    )
-
-                # G. FALLBACK UMUM
                 else:
+                    kategori_pilihan = "UMUM"
                     gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala_regu else GAJI_BULANAN_ANGGOTA
                     gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
-                    label_jabatan = "Kepala Regu / SPV" if is_kepala_regu else "Anggota"
                     st.info(
-                        f"**Tipe:** Produksi/Umum ({divisi_raw}) - **{label_jabatan}** ({nama_karyawan})\n\n"
-                        f"📌 **Tarif Harian:** Rp {gaji_std_default:,.0f} / hari"
+                        f"**Divisi:** Umum ({divisi_raw})\n\n"
+                        f"👤 **Karyawan:** {nama_karyawan} ({label_jabatan})\n"
+                        f"📌 **Tarif Harian:** Rp {gaji_std_default:,.0f}/hari"
                     )
 
+            # ------------------------------------------------------------------
+            # KOLOM KANAN: FORM INPUT SPESIFIK & PENGHITUNGAN
+            # ------------------------------------------------------------------
             with col_p2:
-                # Hanya Produksi Brondong yang memiliki skema target bal
-                if "brondong" in divisi_lower:
+                # 1. OPTION KHUSUS PEMBUNGKUS SNACK (OTOMATIS CEK BRONDONG/GAJI POKOK)
+                if kategori_pilihan == "PEMBUNGKUS_SNACK":
+                    st.markdown("##### 📦 Input Borongan Pembungkus")
+                    
+                    jenis_produk = st.selectbox(
+                        "Pilih Produk yang Dibungkus",
+                        ["Makaroni", "Stik Bawang", "Seblak", "Kerupuk", "Brondong", "Lainnya"]
+                    )
+                    jumlah_bal = st.number_input("Jumlah Hasil Bungkus (Bal)", min_value=1, value=1, step=1)
+                    tarif_per_bal = st.number_input("Tarif per Bal (Rp)", min_value=0, value=3000, step=500)
+                    
+                    # CEK RIWAYAT LOG HARI INI
+                    is_ada_brondong_hari_ini = False
+                    sudah_ambil_gpokok_hari_ini = False
+                    data_log_hari_ini = []
+
+                    try:
+                        res = supabase.table("LogHarian")\
+                            .select("*")\
+                            .eq("tanggal", str(tgl_presensi))\
+                            .eq("nama_karyawan", nama_karyawan)\
+                            .execute()
+                        data_log_hari_ini = res.data or []
+                        
+                        for log in data_log_hari_ini:
+                            prod = str(log.get("jenis_produk", "")).lower()
+                            if "brondong" in prod:
+                                is_ada_brondong_hari_ini = True
+                            if log.get("gaji_pokok", 0) > 0:
+                                sudah_ambil_gpokok_hari_ini = True
+                    except Exception as e:
+                        st.caption(f"ℹ️ Status Riwayat: {e}")
+
+                    # LOGIKA GAJI POKOK
+                    is_input_sekarang_brondong = "brondong" in jenis_produk.lower()
+                    if is_input_sekarang_brondong or is_ada_brondong_hari_ini:
+                        gp_diterima = 0
+                        ket_gp = "❌ Tidak dapat Gaji Pokok (ada bungkus Brondong hari ini)"
+                    else:
+                        if not sudah_ambil_gpokok_hari_ini:
+                            gp_diterima = 10000
+                            ket_gp = "✅ Mendapat Gaji Pokok Rp 10.000 (Produk Non-Brondong)"
+                        else:
+                            gp_diterima = 0
+                            ket_gp = "ℹ️ Gaji Pokok Rp 10.000 sudah dihitung di input pertama"
+
+                    hasil_borongan = jumlah_bal * tarif_per_bal
+                    total_gaji_akhir = hasil_borongan + gp_diterima
+
+                    st.info(
+                        f"**Rincian Perhitungan ({nama_karyawan}):**\n"
+                        f"- Borongan {jenis_produk}: {jumlah_bal} Bal x Rp {tarif_per_bal:,.0f} = **Rp {hasil_borongan:,.0f}**\n"
+                        f"- Status Gaji Pokok: **{ket_gp}**\n"
+                        f"- 💰 **Total Input Ini: Rp {total_gaji_akhir:,.0f}**"
+                    )
+
+                # 2. OPTION KHUSUS PRODUKSI BRONDONG
+                elif kategori_pilihan == "BRONDONG":
                     target_bal = 50
-                    st.markdown("##### 🎯 Target & Perhitungan Brondong")
+                    st.markdown("##### 🎯 Target & Hasil Brondong")
                     hasil_bal = st.number_input("Total Hasil Brondong Hari Ini (Bal)", min_value=0, value=50, step=1)
                     
                     if is_kepala_regu:
                         st.caption("ℹ️ **Kepala Regu:** Menerima gaji utuh harian tanpa potongan target.")
+                        total_gaji_akhir = gaji_std_default
                     else:
                         st.caption(f"🎯 **Target Standard Anggota:** {target_bal} Bal/Hari")
                         rasio = hasil_bal / target_bal
-                        gaji_estimasi = gaji_std_default * rasio
+                        total_gaji_akhir = gaji_std_default * rasio
                         
                         if hasil_bal < target_bal:
-                            potongan = gaji_std_default - gaji_estimasi
+                            potongan = gaji_std_default - total_gaji_akhir
                             st.warning(f"⚠️ **Kurang Target:** Dipotong Rp {potongan:,.0f} ({hasil_bal}/{target_bal} Bal)")
                         elif hasil_bal > target_bal:
-                            bonus = gaji_estimasi - gaji_std_default
+                            bonus = total_gaji_akhir - gaji_std_default
                             st.success(f"🔥 **Bonus Target:** +Rp {bonus:,.0f} ({hasil_bal}/{target_bal} Bal)")
                         else:
                             st.info("✅ Target pas (50 Bal) -> Gaji utuh 100%.")
 
+                # 3. OPTION DIVISI LAIN (FLAT HARIAN)
                 else:
-                    hasil_bal = 1.0
-                    st.success(f"✅ **Gaji Harian Diterima:** Rp {gaji_std_default:,.0f}")
+                    st.markdown("##### 📌 Presensi Harian Flat")
+                    total_gaji_akhir = gaji_std_default
+                    st.success(f"✅ **Gaji Harian Diterima:** Rp {total_gaji_akhir:,.0f}")
 
+            # ------------------------------------------------------------------
+            # TOMBOL SUBMIT FORM TUNGGAL (UNTUK SEMUA DIVISI)
+            # ------------------------------------------------------------------
             btn_simpan_harian = st.form_submit_button("💾 Hitung & Simpan Presensi", type="primary")
 
             if btn_simpan_harian:
-                if "brondong" in divisi_lower:
-                    if is_kepala_regu:
-                        gaji_akhir = gaji_std_default
-                        catatan = "Kepala Regu Brondong (Gaji Utuh)."
-                    else:
-                        target_bal = 50
-                        rasio = hasil_bal / target_bal
-                        gaji_akhir = gaji_std_default * rasio
-                        
-                        if hasil_bal == target_bal:
-                            catatan = f"Target pas ({hasil_bal} Bal). Gaji 100%."
-                        elif hasil_bal < target_bal:
-                            potongan = gaji_std_default - gaji_akhir
-                            catatan = f"Kurang target ({hasil_bal}/50 Bal). Dipotong Rp {potongan:,.0f}."
-                        else:
-                            bonus = gaji_akhir - gaji_std_default
-                            catatan = f"Lebih target ({hasil_bal}/50 Bal). Bonus +Rp {bonus:,.0f}."
+                if kategori_pilihan == "PEMBUNGKUS_SNACK":
+                    # KOREKSI GAJI POKOK JIKA SEBELUMNYA SUDAH AMBIL TAPI SEKARANG INPUT BRONDONG
+                    if is_input_sekarang_brondong and sudah_ambil_gpokok_hari_ini:
+                        try:
+                            for log in data_log_hari_ini:
+                                if log.get("gaji_pokok", 0) > 0:
+                                    id_log = log.get("id")
+                                    gaji_baru = log.get("total_gaji", 0) - log.get("gaji_pokok", 0)
+                                    supabase.table("LogHarian").update({
+                                        "gaji_pokok": 0,
+                                        "total_gaji": gaji_baru
+                                    }).eq("id", id_log).execute()
+                            st.warning("⚠️ Gaji Pokok Rp 10.000 input sebelumnya telah dikoreksi (dibatalkan).")
+                        except Exception as e_koreksi:
+                            pass
 
-                elif "abk" in divisi_lower or "kandang" in divisi_lower:
-                    gaji_akhir = gaji_std_default
-                    catatan = f"Presensi ABK Kandang (1/{hari_kerja_abk} Hari Kerja)."
+                    payload = {
+                        "tanggal": str(tgl_presensi),
+                        "nama_karyawan": nama_karyawan,
+                        "sistem_gaji": "Borongan",
+                        "jenis_produk": jenis_produk,
+                        "ukuran_bal": "-",
+                        "jumlah_borongan": float(jumlah_bal),
+                        "nominal_satuan": int(tarif_per_bal),
+                        "gaji_pokok": int(gp_diterima),
+                        "total_gaji": float(total_gaji_akhir)
+                    }
 
-                elif "pembungkus" in divisi_lower:
-                    gaji_akhir = gaji_std_default
-                    catatan = f"Presensi Bungkus Snack Flat Harian (1/{hari_kerja_pabrik} Hari Kerja)."
-
-                elif "snack" in divisi_lower:
-                    gaji_akhir = gaji_std_default
-                    catatan = f"Presensi Pemasak Snack Flat Harian (1/{hari_kerja_pabrik} Hari Kerja)."
-
-                elif "admin" in divisi_lower:
-                    gaji_akhir = GAJI_HARIAN_TETAP_ADMIN
-                    catatan = "Presensi Admin Pabrik."
+                elif kategori_pilihan == "BRONDONG":
+                    payload = {
+                        "tanggal": str(tgl_presensi),
+                        "nama_karyawan": nama_karyawan,
+                        "sistem_gaji": "Harian",
+                        "jenis_produk": "Brondong",
+                        "ukuran_bal": "-",
+                        "jumlah_borongan": float(hasil_bal),
+                        "nominal_satuan": int(gaji_std_default),
+                        "gaji_pokok": 0,
+                        "total_gaji": float(total_gaji_akhir)
+                    }
 
                 else:
-                    gaji_akhir = gaji_std_default
-                    catatan = "Presensi Harian."
+                    payload = {
+                        "tanggal": str(tgl_presensi),
+                        "nama_karyawan": nama_karyawan,
+                        "sistem_gaji": "Harian",
+                        "jenis_produk": divisi_raw,
+                        "ukuran_bal": "-",
+                        "jumlah_borongan": 1.0,
+                        "nominal_satuan": int(gaji_std_default),
+                        "gaji_pokok": 0,
+                        "total_gaji": float(total_gaji_akhir)
+                    }
 
-                payload = {
-                    "tanggal": str(tgl_presensi),
-                    "nama_karyawan": nama_karyawan,
-                    "sistem_gaji": "Harian",
-                    "jenis_produk": divisi_raw if divisi_raw else "Harian",
-                    "ukuran_bal": "-",
-                    "jumlah_borongan": float(hasil_bal),
-                    "nominal_satuan": int(gaji_std_default),
-                    "total_gaji": float(gaji_akhir)
-                }
-                
                 try:
                     supabase.table("LogHarian").insert(payload).execute()
-                    st.success(f"✅ Presensi {nama_karyawan} berhasil disimpan! Gaji Diterima: **Rp {gaji_akhir:,.0f}** ({catatan})")
+                    st.success(f"✅ Data presensi {nama_karyawan} berhasil disimpan! Total Gaji: Rp {total_gaji_akhir:,.0f}")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Gagal menyimpan ke database: {e}")
