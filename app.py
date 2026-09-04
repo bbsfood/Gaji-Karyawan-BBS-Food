@@ -213,7 +213,7 @@ if menu == "Input Bungkusan Borongan":
 # ----------------------------------------------------
 # MENU 2: PRESENSI HARIAN NON-BORONGAN
 # ----------------------------------------------------
-elif menu == "Presensi Harian & Non-Borongan":
+elif menu == "Presensi Harian Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
     tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
