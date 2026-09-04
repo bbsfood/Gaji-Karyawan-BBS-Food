@@ -20,6 +20,27 @@ def get_hari_kerja_abk(tahun, bulan):
     """Menghitung hari kerja ABK Kandang (Total hari dalam bulan - 2 hari libur)."""
     total_hari_bulan = calendar.monthrange(tahun, bulan)[1]
     return max(total_hari_bulan - 2, 1)
+    
+# ====================================================
+# FUNGSI MENGHITUNG HARI KERJA EFEKTIF DINAMIS
+# ====================================================
+def get_hari_kerja_efektif(tahun, bulan):
+    """
+    Menghitung hari kerja efektif (Total hari dalam 1 bulan DIKURANGI Hari Minggu).
+    """
+    total_hari = calendar.monthrange(tahun, bulan)[1]
+    jumlah_minggu = 0
+    for day in range(1, total_hari + 1):
+        if calendar.weekday(tahun, bulan, day) == 6:  # 6 = Hari Minggu
+            jumlah_minggu += 1
+    return total_hari - jumlah_minggu
+
+def get_hari_kerja_abk(tahun, bulan):
+    """
+    Menghitung hari kerja ABK Kandang (Total hari dalam 1 bulan DIKURANGI 2 Hari Libur).
+    """
+    total_hari = calendar.monthrange(tahun, bulan)[1]
+    return total_hari - 2
 
 # Page Config
 st.set_page_config(page_title="Gaji & Produksi BBS Food", layout="wide")
@@ -84,7 +105,7 @@ def get_karyawan_list():
 # Sidebar Navigasi
 menu = st.sidebar.radio("Pilih Menu", [
     "Input Bungkusan Borongan",
-    "Presensi Harian Non-Borongan",
+    "Presensi Harian & Non-Borongan",
     "Kasbon Karyawan",
     "Master Karyawan",
     "Data & Edit Log", 
@@ -226,27 +247,47 @@ if menu == "Input Bungkusan Borongan":
                     st.success(f"Berhasil menyimpan hasil {produk_tim} untuk {jumlah_anggota} anggota tim!")
                     st.rerun()
                     
-# ----------------------------------------------------
-# MENU 2: PRESENSI HARIAN & NON-BORONGAN (DENGAN DUKUNGAN ABK KANDANG)
-# ----------------------------------------------------
+# ====================================================
+# MENU 2: PRESENSI HARIAN & NON-BORONGAN
+# ====================================================
 if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Borongan":
     st.subheader("⏱️ Input Presensi Harian & Non-Borongan")
     
+    # 1. TANGGAL KERJA DILUAR FORM (Merender ulang hitungan hari kerja jika tanggal diganti)
     tgl_presensi = st.date_input("Tanggal Kerja", value=datetime.today(), key="harian_tgl")
     thn = tgl_presensi.year
     bln = tgl_presensi.month
     
-    # Hari Kerja Umum Pabrik (Libur Minggu)
+    # 2. HITUNG HARI KERJA EFEKTIF DINAMIS BERDASARKAN TANGGAL DIPILIH
     hari_kerja_pabrik = get_hari_kerja_efektif(thn, bln)
-    # Hari Kerja ABK Kandang (Libur 2x sebulan)
     hari_kerja_abk = get_hari_kerja_abk(thn, bln)
 
+    # Indikator Tanggal Aktif
+    st.caption(
+        f"📅 **Akses Bulan {bln}/{thn}:** "
+        f"Pabrik = **{hari_kerja_pabrik} Hari Kerja** (Libur Minggu) | "
+        f"ABK Kandang = **{hari_kerja_abk} Hari Kerja** (Libur 2x)"
+    )
+
     karyawan_data = get_karyawan_list()
-    # Filter karyawan aktif non-borongan
-    harian_karyawan = [
-        k for k in karyawan_data 
-        if k.get("divisi") != "Pembungkus / Borongan" and k.get("status", "Aktif") == "Aktif"
-    ] or karyawan_data
+    
+    # FILTER KARYAWAN UNTUK PRESENSI HARIAN:
+    # - Termasuk semua divisi Non-Borongan
+    # - Khusus Pembungkus: Hanya memasukkan 'Bungkus Snack' (Bungkus Brondong dikecualikan)
+    harian_karyawan = []
+    for k in karyawan_data:
+        if k.get("status", "Aktif") != "Aktif":
+            continue
+            
+        div = k.get("divisi", "")
+        sub_div = k.get("sub_divisi", "") or k.get("jenis_produk", "")
+        
+        # Jika divisi Pembungkus, hanya loloskan jika Bungkus Snack
+        if div == "Pembungkus / Borongan":
+            if "snack" in sub_div.lower() or "snack" in div.lower():
+                harian_karyawan.append(k)
+        else:
+            harian_karyawan.append(k)
 
     if not harian_karyawan:
         st.warning("⚠️ Belum ada data karyawan harian aktif.")
@@ -269,26 +310,38 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                 # PENENTUAN TARIF HARIAN BERDASARKAN JABATAN & DIVISI
                 # ----------------------------------------------------
                 
-                # 1. ATURAN KHUSUS SUTRIS / ABK KANDANG (LIBUR 2 HARI SEBULAN)
+                # A. ATURAN SUTRIS / ABK KANDANG (LIBUR 2 HARI SEBULAN)
                 if nama_karyawan.strip().lower() == "sutris" or divisi == "ABK Kandang":
                     gaji_std_default = GAJI_BULANAN_ANGGOTA / hari_kerja_abk
                     st.info(
                         f"**Tipe:** ABK Kandang (Sutris)\n\n"
-                        f"📅 **Skema Libur:** 2x / Bulan ({hari_kerja_abk} Hari Kerja)\n"
+                        f"📅 **Hari Kerja Bulan Ini:** {hari_kerja_abk} Hari\n"
                         f"📌 **Tarif Harian:** Rp {GAJI_BULANAN_ANGGOTA:,.0f} / {hari_kerja_abk} Hari = **Rp {gaji_std_default:,.0f}/hari**"
                     )
 
-                # 2. ADMIN PABRIK / NILA
+                # B. ADMIN PABRIK / NILA
                 elif divisi == "Admin Pabrik" or nama_karyawan == "Nila":
                     gaji_std_default = GAJI_HARIAN_TETAP_ADMIN
                     st.info(f"**Tipe:** Admin Pabrik (Flat Harian Rp {gaji_std_default:,.0f})")
 
-                # 3. PACKING ONLINE
+                # C. PACKING ONLINE
                 elif divisi == "Packing Online":
                     gaji_std_default = GAJI_BULANAN_PACKING_ONLINE / hari_kerja_pabrik
-                    st.info(f"**Tipe:** Packing Online (Rp {GAJI_BULANAN_PACKING_ONLINE:,.0f} / {hari_kerja_pabrik} hari = Rp {gaji_std_default:,.0f}/hari)")
+                    st.info(f"**Tipe:** Packing Online\n\n📌 **Tarif Harian:** Rp {GAJI_BULANAN_PACKING_ONLINE:,.0f} / {hari_kerja_pabrik} Hari = **Rp {gaji_std_default:,.0f}/hari**")
 
-                # 4. PRODUKSI SNACK (SRI & PEMASAK SNACK)
+                # D. BUNGKUS SNACK (PEMBUNGKUS SNACK GAJI POKOK HARIAN)
+                elif divisi == "Pembungkus / Borongan" or "snack" in divisi.lower():
+                    is_kepala = (jabatan == "Kepala Regu" or jabatan == "SPV")
+                    gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala else GAJI_BULANAN_ANGGOTA
+                    gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
+                    label_jabatan = "Kepala Regu / SPV" if is_kepala else "Anggota"
+                    st.info(
+                        f"**Tipe:** Bungkus Snack - {label_jabatan}\n\n"
+                        f"📌 **Flat Harian:** Rp {gaji_std_default:,.0f} / hari "
+                        f"(Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari Kerja)"
+                    )
+
+                # E. PRODUKSI SNACK (SRI & PEMASAK SNACK)
                 elif divisi == "Produksi Snack":
                     is_kepala = (jabatan == "Kepala Regu" or jabatan == "SPV" or nama_karyawan == "Sri")
                     gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala else GAJI_BULANAN_ANGGOTA
@@ -296,13 +349,13 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                     label_jabatan = "Kepala Regu / SPV" if is_kepala else "Anggota"
                     st.info(f"**Tipe:** Pemasak Snack - {label_jabatan}\n\n📌 **Flat Harian:** Rp {gaji_std_default:,.0f} / hari (Acuan Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari)")
 
-                # 5. PRODUKSI BRONDONG
+                # F. PRODUKSI BRONDONG (PEMASAK BRONDONG HASIL TARGET 50 BAL)
                 else:  
                     is_kepala = (jabatan == "Kepala Regu" or jabatan == "SPV")
                     gaji_pokok_bulanan = GAJI_BULANAN_KEPALA_REGU if is_kepala else GAJI_BULANAN_ANGGOTA
                     gaji_std_default = gaji_pokok_bulanan / hari_kerja_pabrik
                     label_jabatan = "Kepala Regu / SPV" if is_kepala else "Anggota"
-                    st.info(f"**Tipe:** Pemasak Brondong - {label_jabatan}\n\n🎯 **Gaji Acuan 100% (50 Bal):** Rp {gaji_std_default:,.0f}")
+                    st.info(f"**Tipe:** Pemasak Brondong - {label_jabatan}\n\n🎯 **Gaji Acuan 100% (50 Bal):** Rp {gaji_std_default:,.0f} (Rp {gaji_pokok_bulanan:,.0f} / {hari_kerja_pabrik} Hari)")
 
             with col_p2:
                 if divisi == "Produksi Brondong":
@@ -358,6 +411,10 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                     gaji_akhir = gaji_std_default
                     catatan = f"Presensi ABK Kandang (1/{hari_kerja_abk} Hari Kerja)."
 
+                elif divisi == "Pembungkus / Borongan" or "snack" in divisi.lower():
+                    gaji_akhir = gaji_std_default
+                    catatan = f"Presensi Bungkus Snack Flat Harian (1/{hari_kerja_pabrik} Hari Kerja)."
+
                 elif divisi == "Produksi Snack":
                     gaji_akhir = gaji_std_default
                     catatan = f"Presensi Pemasak Snack Flat Harian (1/{hari_kerja_pabrik} Hari Kerja)."
@@ -375,7 +432,7 @@ if menu == "Presensi Harian Non-Borongan" or menu == "Presensi Harian & Non-Boro
                     "tanggal": str(tgl_presensi),
                     "nama_karyawan": nama_karyawan,
                     "sistem_gaji": "Harian",
-                    "jenis_produk": divisi if divisi else "ABK Kandang",
+                    "jenis_produk": divisi if divisi else "Pembungkus Snack",
                     "ukuran_bal": "-",
                     "jumlah_borongan": float(hasil_bal),
                     "nominal_satuan": int(gaji_std_default),
