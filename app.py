@@ -8,19 +8,11 @@ import io
 # ==========================================
 # KONSTANTA GAJI STANDAR BBS FOOD
 # ==========================================
-GAJI_BULANAN_KEPALA_REGU = 2500000      # Gaji acuan Kepala Regu Bulanan
-GAJI_BULANAN_ANGGOTA = 2377000          # Gaji acuan Anggota Bulanan (Pemasak Brondong & Snack)
-GAJI_BULANAN_PACKING_ONLINE = 2000000   # Gaji acuan Packing Online Bulanan
-GAJI_HARIAN_TETAP_ADMIN = 100000        # Gaji flat Admin Pabrik per hari
+GAJI_BULANAN_KEPALA_REGU = 2500000     # Gaji acuan Kepala Regu Bulanan
+GAJI_BULANAN_ANGGOTA = 2377000         # Gaji acuan Anggota Bulanan (Pemasak Brondong & Snack)
+GAJI_BULANAN_PACKING_ONLINE = 2000000  # Gaji acuan Packing Online Bulanan
+GAJI_HARIAN_TETAP_ADMIN = 100000       # Gaji flat Admin Pabrik per hari
 
-# ====================================================
-# FUNGSI BANTUAN HARI KERJA KHUSUS ABK KANDANG (LIBUR 2 HARI / BULAN)
-# ====================================================
-def get_hari_kerja_abk(tahun, bulan):
-    """Menghitung hari kerja ABK Kandang (Total hari dalam bulan - 2 hari libur)."""
-    total_hari_bulan = calendar.monthrange(tahun, bulan)[1]
-    return max(total_hari_bulan - 2, 1)
-    
 # ====================================================
 # FUNGSI MENGHITUNG HARI KERJA EFEKTIF DINAMIS
 # ====================================================
@@ -33,14 +25,14 @@ def get_hari_kerja_efektif(tahun, bulan):
     for day in range(1, total_hari + 1):
         if calendar.weekday(tahun, bulan, day) == 6:  # 6 = Hari Minggu
             jumlah_minggu += 1
-    return total_hari - jumlah_minggu
+    return max(total_hari - jumlah_minggu, 1)
 
 def get_hari_kerja_abk(tahun, bulan):
     """
-    Menghitung hari kerja ABK Kandang (Total hari dalam 1 bulan DIKURANGI 2 Hari Libur).
+    Menghitung hari kerja ABK Kandang (Total hari dalam bulan - 2 hari libur).
     """
-    total_hari = calendar.monthrange(tahun, bulan)[1]
-    return total_hari - 2
+    total_hari_bulan = calendar.monthrange(tahun, bulan)[1]
+    return max(total_hari_bulan - 2, 1)
 
 # Page Config
 st.set_page_config(page_title="Gaji & Produksi BBS Food", layout="wide")
@@ -80,21 +72,9 @@ DAFTAR_PRODUK = [
     "Seblak Mix", "Jengkol", "Kedelai Ori", "Kedelai Pedas", 
     "K. Tongkol Asin", "K. Tongkol Pedas", "Campuran (Mix)", 
     "Marneng Asin", "Marneng Pedas", "Emping Balado Asin", 
-    "Emping Pedas Manis", "Mie Enak", "K. Jablay", "Brondong","Kedelai Mesin"
+    "Emping Pedas Manis", "Mie Enak", "K. Jablay", "Brondong", "Kedelai Mesin"
 ]
 UKURAN_BAL = ["Isi 10", "Isi 12"]
-
-# Acuan UMR Sragen Bulanan & Fungsi Hari Kerja Efektif (Senin-Sabtu)
-GAJI_BULANAN_KEPALA_REGU = 2500000
-GAJI_BULANAN_ANGGOTA = 2377000
-
-def get_hari_kerja_efektif(tahun, bulan):
-    _, total_hari = calendar.monthrange(tahun, bulan)
-    hari_kerja = 0
-    for day in range(1, total_hari + 1):
-        if calendar.weekday(tahun, bulan, day) != 6:  # 6 = Hari Minggu
-            hari_kerja += 1
-    return hari_kerja
 
 def get_karyawan_list():
     res = supabase.table("MasterKaryawan").select("*").order("nama_karyawan").execute()
@@ -104,18 +84,19 @@ def get_karyawan_list():
 
 # Sidebar Navigasi
 menu = st.sidebar.radio("Pilih Menu", [
-    "Input Bungkusan Borongan",
-    "Kasbon Karyawan",
-    "Master Karyawan",
-    "Data & Edit Log", 
-    "Rekap & Ekspor Excel", 
-    "Cetak Struk Termal"
+    "1. Input Bungkusan Borongan",
+    "2. Input Absensi & Gaji Harian/Bulanan",
+    "3. Kasbon Karyawan",
+    "4. Master Karyawan",
+    "5. Data & Edit Log", 
+    "6. Rekap & Ekspor Excel", 
+    "7. Cetak Struk Termal"
 ])
 
 # ----------------------------------------------------
 # MENU 1: INPUT BUNGKUSAN BORONGAN
 # ----------------------------------------------------
-if menu == "Input Bungkusan Borongan":
+if menu == "1. Input Bungkusan Borongan":
     st.subheader("📦 Input Hasil Bungkusan Borongan")
     
     karyawan_data = get_karyawan_list()
@@ -148,15 +129,22 @@ if menu == "Input Bungkusan Borongan":
                 with col_i3:
                     item_qty = st.number_input("Jumlah (Ball)", min_value=0.1, value=1.0, step=0.5, format="%.1f", key="ind_qty")
                 with col_i4:
-                    # Otomatis tentukan tarif: Brondong = 4500, Lainnya = 4000
                     default_tarif = 4500 if item_produk == "Brondong" else 4000
                     item_nominal = st.number_input("Gaji per Ball (Rp)", min_value=0, value=default_tarif, step=500, key="ind_nom")
                 
+                # --- FITUR DENGAN GAJI POKOK PADA PEMBUNGKUS NON-BRONDONG ---
+                gaji_pokok_tambahan = 0
+                if item_produk != "Brondong":
+                    st.markdown("---")
+                    pake_gaji_pokok = st.checkbox("Tambahkan Gaji Pokok Harian Pembungkus Non-Brondong", value=False)
+                    if pake_gaji_pokok:
+                        gaji_pokok_tambahan = st.number_input("Nominal Gaji Pokok Harian (Rp)", min_value=0, value=20000, step=5000)
+
                 btn_add = st.form_submit_button("➕ Tambahkan ke Daftar")
                 if btn_add:
-                    total_item_gaji = item_qty * item_nominal
+                    total_item_gaji = (item_qty * item_nominal) + gaji_pokok_tambahan
                     st.session_state["items_borongan"].append({
-                        "jenis_produk": item_produk,
+                        "jenis_produk": item_produk + (" + GP" if gaji_pokok_tambahan > 0 else ""),
                         "ukuran_bal": item_bal,
                         "jumlah_borongan": float(item_qty),
                         "nominal_satuan": int(item_nominal),
@@ -245,15 +233,95 @@ if menu == "Input Bungkusan Borongan":
                     supabase.table("LogHarian").insert(data_tim_to_insert).execute()
                     st.success(f"Berhasil menyimpan hasil {produk_tim} untuk {jumlah_anggota} anggota tim!")
                     st.rerun()
-                    
-# ---------------------------------------------------              
+
+# ----------------------------------------------------
+# MENU 2: INPUT ABSENSI & GAJI HARIAN / BULANAN (BARU)
+# ----------------------------------------------------
+elif menu == "2. Input Absensi & Gaji Harian/Bulanan":
+    st.subheader("🗓️ Input Absensi & Perhitungan Gaji Harian / Non-Borongan")
+    
+    karyawan_data = get_karyawan_list()
+    if not karyawan_data:
+        st.warning("⚠️ Belum ada data karyawan. Tambahkan di menu Master Karyawan!")
+    else:
+        col_a1, col_a2 = st.columns(2)
+        with col_a1:
+            tgl_absen = st.date_input("Tanggal Masuk Kerja", value=datetime.today(), key="abs_tgl")
+            # Filter Karyawan Non-Borongan murni
+            list_karyawan_harian = [
+                k for k in karyawan_data 
+                if k.get("divisi") in ["Produksi Brondong", "Produksi Snack", "Admin Pabrik", "Packing Online"]
+            ]
+            
+            if not list_karyawan_harian:
+                st.info("ℹ️ Tidak ada karyawan berdivisi Harian/Bulanan. (Semua karyawan diset Pembungkus/Borongan)")
+                dict_karyawan = {k["nama_karyawan"]: k for k in karyawan_data}
+                pilih_nama_absen = st.selectbox("Pilih Karyawan", list(dict_karyawan.keys()))
+                karyawan_terpilih = dict_karyawan[pilih_nama_absen]
+            else:
+                dict_karyawan = {k["nama_karyawan"]: k for k in list_karyawan_harian}
+                pilih_nama_absen = st.selectbox("Pilih Karyawan Harian/Bulanan", list(dict_karyawan.keys()))
+                karyawan_terpilih = dict_karyawan[pilih_nama_absen]
+
+        divisi = karyawan_terpilih.get("divisi", "Produksi Snack")
+        jabatan = karyawan_terpilih.get("jabatan", "Anggota")
+        
+        # Hitung Hari Kerja Efektif Bulan Berjalan
+        thn_cur, bln_cur = tgl_absen.year, tgl_absen.month
+        hari_efektif = get_hari_kerja_efektif(thn_cur, bln_cur)
+
+        # Hitung Rate Nominal Harian Otomatis Berdasarkan Divisi & Jabatan
+        if divisi == "Admin Pabrik":
+            gaji_harian = GAJI_HARIAN_TETAP_ADMIN
+            ket_gaji = "Flat Admin Harian"
+        elif divisi == "Packing Online":
+            gaji_harian = GAJI_BULANAN_PACKING_ONLINE / hari_efektif
+            ket_gaji = f"Prorata Bulanan (Rp {GAJI_BULANAN_PACKING_ONLINE:,.0f} / {hari_efektif} Hari)"
+        else: # Produksi Brondong / Snack
+            if jabatan == "Kepala Regu":
+                gaji_harian = GAJI_BULANAN_KEPALA_REGU / hari_efektif
+                ket_gaji = f"Prorata Karu (Rp {GAJI_BULANAN_KEPALA_REGU:,.0f} / {hari_efektif} Hari)"
+            else:
+                gaji_harian = GAJI_BULANAN_ANGGOTA / hari_efektif
+                ket_gaji = f"Prorata Anggota (Rp {GAJI_BULANAN_ANGGOTA:,.0f} / {hari_efektif} Hari)"
+
+        with col_a2:
+            st.markdown("##### Detail Hitungan Gaji Harian:")
+            st.info(f"""
+            * **Divisi / Jabatan**: {divisi} ({jabatan})
+            * **Hari Kerja Efektif Bulan Ini**: {hari_efektif} Hari
+            * **Skema Hitungan**: {ket_gaji}
+            * **Nominal Gaji Hari Ini**: **Rp {gaji_harian:,.2f}**
+            """)
+
+        st.divider()
+
+        with st.form("form_simpan_absensi"):
+            override_gaji = st.number_input("Nominal Gaji yang Diterima Hari Ini (Dapat Disesuaikan)", min_value=0.0, value=float(round(gaji_harian)), step=1000.0)
+            btn_absensi = st.form_submit_button("💾 Simpan Absensi & Gaji Harian", type="primary")
+
+            if btn_absensi:
+                payload_absensi = {
+                    "nama_karyawan": pilih_nama_absen,
+                    "tanggal": str(tgl_absen),
+                    "sistem_gaji": "Harian",
+                    "jenis_produk": f"Absensi Harian ({divisi})",
+                    "ukuran_bal": "-",
+                    "jumlah_borongan": 1.0,
+                    "nominal_satuan": int(override_gaji),
+                    "total_gaji": float(override_gaji)
+                }
+                supabase.table("LogHarian").insert(payload_absensi).execute()
+                st.success(f"✅ Absensi & Gaji Rp {override_gaji:,.0f} untuk {pilih_nama_absen} berhasil disimpan!")
+                st.rerun()
+
+# ----------------------------------------------------          
 # MENU 3: KASBON KARYAWAN
 # ----------------------------------------------------
-elif menu == "Kasbon Karyawan":
+elif menu == "3. Kasbon Karyawan":
     st.subheader("💵 Pencatatan Kasbon / Pinjaman Karyawan")
     
     karyawan_data = get_karyawan_list()
-    # Menampilkan hanya karyawan yang berstatus Aktif
     list_karyawan_aktif = [k["nama_karyawan"] for k in karyawan_data if k.get("status", "Aktif") == "Aktif"]
     
     if not list_karyawan_aktif:
@@ -261,7 +329,6 @@ elif menu == "Kasbon Karyawan":
     else:
         col_ks1, col_ks2 = st.columns([1, 1])
         
-        # TABEL INPUT KASBON BARU
         with col_ks1:
             st.markdown("##### ➕ Input Kasbon Baru (Bon Sabtu)")
             with st.form("form_kasbon", clear_on_submit=True):
@@ -286,7 +353,6 @@ elif menu == "Kasbon Karyawan":
                     except Exception as e:
                         st.error(f"Gagal menyimpan kasbon: {e}")
 
-        # TABEL RIWAYAT & HAPUS KASBON
         with col_ks2:
             st.markdown("##### 📋 Riwayat Transaksi Kasbon")
             res_bon = supabase.table("Kasbon").select("*").order("id", desc=True).limit(20).execute()
@@ -306,10 +372,11 @@ elif menu == "Kasbon Karyawan":
                         st.error(f"Gagal menghapus: {e}")
             else:
                 st.info("Belum ada riwayat transaksi kasbon.")
+
 # ----------------------------------------------------
 # MENU 4: MASTER KARYAWAN
 # ----------------------------------------------------
-elif menu == "Master Karyawan":
+elif menu == "4. Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
     
     col_k1, col_k2 = st.columns(2)
@@ -318,7 +385,7 @@ elif menu == "Master Karyawan":
         st.markdown("##### Tambah Karyawan Baru")
         with st.form("form_karyawan", clear_on_submit=True):
             nama_baru = st.text_input("Nama Karyawan")
-            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Produksi Snack"])
+            divisi_baru = st.selectbox("Divisi Kerja", ["Pembungkus / Borongan", "Produksi Brondong", "Produksi Snack", "Admin Pabrik", "Packing Online"])
             jabatan_baru = st.selectbox("Jabatan", ["Anggota", "Kepala Regu"])
             btn_karyawan = st.form_submit_button("Tambah Karyawan")
             
@@ -357,7 +424,7 @@ elif menu == "Master Karyawan":
 # ----------------------------------------------------
 # MENU 5: DATA & EDIT LOG
 # ----------------------------------------------------
-elif menu == "Data & Edit Log":
+elif menu == "5. Data & Edit Log":
     st.subheader("📋 Riwayat Data Log Produksi & Edit")
     res = supabase.table("LogHarian").select("*").order("id", desc=True).execute()
     
@@ -396,9 +463,9 @@ elif menu == "Data & Edit Log":
                     edit_sistem = st.selectbox("Sistem Gaji", ["Borongan", "Harian"], index=0 if curr.get("sistem_gaji") == "Borongan" else 1)
                     
                     idx_prod = DAFTAR_PRODUK.index(curr.get("jenis_produk")) if curr.get("jenis_produk") in DAFTAR_PRODUK else 0
-                    edit_produk = st.selectbox("Jenis Produk", DAFTAR_PRODUK, index=idx_prod)
+                    edit_produk = st.selectbox("Jenis Produk / Keterangan", DAFTAR_PRODUK, index=idx_prod)
                     
-                    edit_jumlah = st.number_input("Jumlah Ball / Hasil", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
+                    edit_jumlah = st.number_input("Jumlah Ball / Hari", value=float(curr.get("jumlah_borongan", 1.0)), step=0.5, format="%.1f")
                     edit_nominal = st.number_input("Nominal Satuan (Rp)", value=int(curr.get("nominal_satuan", 0)), step=500)
                     
                     if st.form_submit_button("Update Data"):
@@ -415,9 +482,9 @@ elif menu == "Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 6: REKAP & EKSPOR EXCEL (DENGAN REKAP HARIAN PRODUK)
+# MENU 6: REKAP & EKSPOR EXCEL
 # ----------------------------------------------------
-elif menu == "Rekap & Ekspor Excel":
+elif menu == "6. Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
     
     col_b, col_t = st.columns(2)
@@ -434,7 +501,6 @@ elif menu == "Rekap & Ekspor Excel":
         df["tanggal"] = pd.to_datetime(df["tanggal"])
         df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
         
-        # Filter Data Kasbon
         if res_kasbon.data:
             df_k = pd.DataFrame(res_kasbon.data)
             df_k["tanggal"] = pd.to_datetime(df_k["tanggal"])
@@ -445,12 +511,9 @@ elif menu == "Rekap & Ekspor Excel":
         if not df_filtered.empty:
             st.divider()
             
-            # TAB 1 & 2 DIBAGI AGAR RAPI
             tab_gaji, tab_prod = st.tabs(["💵 Rekap Gaji Karyawan", "📦 Rekap Produksi Barang (Harian & Bulanan)"])
             
-            # ----------------------------------------------------
             # TAB 1: REKAP GAJI
-            # ----------------------------------------------------
             with tab_gaji:
                 st.markdown("### 👥 Rekapitulasi Gaji Karyawan")
                 rekap_gaji = df_filtered.groupby(["nama_karyawan", "sistem_gaji"]).agg(
@@ -474,20 +537,13 @@ elif menu == "Rekap & Ekspor Excel":
                     use_container_width=True
                 )
 
-            # ----------------------------------------------------
-            # TAB 2: REKAP PRODUKSI HARIAN & BULANAN (MATRIX)
-            # ----------------------------------------------------
+            # TAB 2: REKAP PRODUKSI
             with tab_prod:
                 st.markdown("### 📦 Rekap Rincian Hasil Produksi per Barang")
-                
-                # Filter khusus transaksi borongan/produk
                 df_prod = df_filtered[df_filtered["sistem_gaji"] == "Borongan"].copy()
                 
                 if not df_prod.empty:
-                    # Ambil angka tanggal (1, 2, 3... 31)
                     df_prod["tgl_angka"] = df_prod["tanggal"].dt.day
-                    
-                    # Buat Pivot Table: Baris = Jenis Produk & Ukuran, Kolom = Tanggal (1..31)
                     pivot_produksi = pd.pivot_table(
                         df_prod,
                         values="jumlah_borongan",
@@ -496,20 +552,14 @@ elif menu == "Rekap & Ekspor Excel":
                         aggfunc="sum",
                         fill_value=0
                     )
-                    
-                    # Hitung Total Produksi 1 Bulan (Sum per Baris)
                     pivot_produksi["TOTAL BULAN INI (BAL)"] = pivot_produksi.sum(axis=1)
                     pivot_produksi = pivot_produksi.sort_values(by="TOTAL BULAN INI (BAL)", ascending=False).reset_index()
-                    
-                    # Tampilkan di Streamlit
                     st.dataframe(pivot_produksi, use_container_width=True)
                 else:
                     st.info("Belum ada data pengerjaan borongan produk pada bulan ini.")
                     pivot_produksi = pd.DataFrame()
 
-            # ----------------------------------------------------
-            # EKSPOR KE EXCEL (TERMASUK SHEET REKAP PRODUKSI HARIAN)
-            # ----------------------------------------------------
+            # EKSPOR KE EXCEL
             st.divider()
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -533,7 +583,7 @@ elif menu == "Rekap & Ekspor Excel":
 # ----------------------------------------------------
 # MENU 7: CETAK STRUK TERMAL
 # ----------------------------------------------------
-elif menu == "Cetak Struk Termal":
+elif menu == "7. Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
     
     col_b, col_t = st.columns(2)
@@ -550,7 +600,6 @@ elif menu == "Cetak Struk Termal":
         df["tanggal"] = pd.to_datetime(df["tanggal"])
         df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
         
-        # Filter Data Kasbon
         if res_kasbon.data:
             df_k = pd.DataFrame(res_kasbon.data)
             df_k["tanggal"] = pd.to_datetime(df_k["tanggal"])
@@ -568,7 +617,6 @@ elif menu == "Cetak Struk Termal":
             gaji_kotor = df_karyawan["total_gaji"].sum()
             total_hari_kerja = df_karyawan["tanggal"].nunique()
             
-            # Hitung Kasbon Karyawan Terpilih
             if not df_k_filtered.empty:
                 total_kasbon = df_k_filtered[df_k_filtered["nama_karyawan"] == pilih_karyawan]["nominal"].sum()
             else:
@@ -579,6 +627,9 @@ elif menu == "Cetak Struk Termal":
             nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
                           "Juli", "Agustus", "September", "Oktober", "November", "Desember"][bulan - 1]
             
+            label_hasil = "Total Ball" if sistem_gaji == "Borongan" else "Hari Masuk"
+            val_hasil = f"{total_qty:g} Ball" if sistem_gaji == "Borongan" else f"{total_hari_kerja} Hari"
+
             struk_html = f"""
             <div class="thermal-receipt">
                 <center>
@@ -592,7 +643,7 @@ elif menu == "Cetak Struk Termal":
                 Nama   : {pilih_karyawan}<br>
                 Sistem : {sistem_gaji}<br>
                 Absensi: {total_hari_kerja} Hari Masuk<br>
-                Hasil  : {total_qty:g} Ball/Hari<br>
+                Hasil  : {val_hasil}<br>
                 --------------------------------<br>
                 Gaji Kotor   : Rp {gaji_kotor:,.0f}<br>
                 Kasbon/Bon   : Rp {total_kasbon:,.0f}<br>
