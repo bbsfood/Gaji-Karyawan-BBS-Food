@@ -527,11 +527,20 @@ elif menu == "Cetak Struk Termal":
         tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
         
     res = supabase.table("LogHarian").select("*").execute()
+    res_kasbon = supabase.table("Kasbon").select("*").execute()
     
     if res.data:
         df = pd.DataFrame(res.data)
         df["tanggal"] = pd.to_datetime(df["tanggal"])
         df_filtered = df[(df["tanggal"].dt.month == bulan) & (df["tanggal"].dt.year == tahun)]
+        
+        # Filter Data Kasbon
+        if res_kasbon.data:
+            df_k = pd.DataFrame(res_kasbon.data)
+            df_k["tanggal"] = pd.to_datetime(df_k["tanggal"])
+            df_k_filtered = df_k[(df_k["tanggal"].dt.month == bulan) & (df_k["tanggal"].dt.year == tahun)]
+        else:
+            df_k_filtered = pd.DataFrame(columns=["nama_karyawan", "nominal"])
         
         if not df_filtered.empty:
             daftar_karyawan = df_filtered["nama_karyawan"].unique()
@@ -540,8 +549,16 @@ elif menu == "Cetak Struk Termal":
             df_karyawan = df_filtered[df_filtered["nama_karyawan"] == pilih_karyawan]
             sistem_gaji = df_karyawan["sistem_gaji"].iloc[0]
             total_qty = df_karyawan["jumlah_borongan"].sum()
-            total_gaji = df_karyawan["total_gaji"].sum()
+            gaji_kotor = df_karyawan["total_gaji"].sum()
             total_hari_kerja = df_karyawan["tanggal"].nunique()
+            
+            # Hitung Kasbon Karyawan Terpilih
+            if not df_k_filtered.empty:
+                total_kasbon = df_k_filtered[df_k_filtered["nama_karyawan"] == pilih_karyawan]["nominal"].sum()
+            else:
+                total_kasbon = 0
+                
+            gaji_bersih = gaji_kotor - total_kasbon
             
             nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
                           "Juli", "Agustus", "September", "Oktober", "November", "Desember"][bulan - 1]
@@ -559,10 +576,12 @@ elif menu == "Cetak Struk Termal":
                 Nama   : {pilih_karyawan}<br>
                 Sistem : {sistem_gaji}<br>
                 Absensi: {total_hari_kerja} Hari Masuk<br>
+                Hasil  : {total_qty:g} Ball/Hari<br>
                 --------------------------------<br>
-                Total Hasil : {total_qty:g} Ball/Hari<br>
+                Gaji Kotor   : Rp {gaji_kotor:,.0f}<br>
+                Kasbon/Bon   : Rp {total_kasbon:,.0f}<br>
                 --------------------------------<br>
-                <strong>TOTAL GAJI: Rp {total_gaji:,.0f}</strong><br>
+                <strong>GAJI BERSIH  : Rp {gaji_bersih:,.0f}</strong><br>
                 --------------------------------<br>
                 <center>
                     <i>~ Terima Kasih ~</i>
@@ -571,3 +590,5 @@ elif menu == "Cetak Struk Termal":
             """
             st.markdown(struk_html, unsafe_allow_html=True)
             st.caption("Cetak slip menggunakan printer bluetooth 58mm.")
+        else:
+            st.warning("Tidak ada transaksi pada bulan & tahun ini.")
