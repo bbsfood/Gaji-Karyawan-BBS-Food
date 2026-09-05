@@ -704,7 +704,7 @@ elif menu == "Rekap & Ekspor Excel":
             st.warning("Tidak ada transaksi pada bulan & tahun ini.")
 
 # ----------------------------------------------------
-# MENU 7: CETAK STRUK TERMAL
+# MENU 7: CETAK STRUK TERMAL (INCL. ABK KANDANG PRORATA)
 # ----------------------------------------------------
 elif menu == "Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
@@ -737,30 +737,40 @@ elif menu == "Cetak Struk Termal":
             df_karyawan = df_filtered[df_filtered["nama_karyawan"] == pilih_karyawan]
             sistem_gaji = df_karyawan["sistem_gaji"].iloc[0]
             total_qty = df_karyawan["jumlah_borongan"].sum()
-            gaji_borongan = df_karyawan["total_gaji"].sum()
+            gaji_utama = df_karyawan["total_gaji"].sum()
             total_hari_kerja = df_karyawan["tanggal"].nunique()
             
+            # Cek jenis divisi dari data log
             is_brondong = any("Brondong" in str(p) for p in df_karyawan["jenis_produk"].tolist())
+            is_abk = any("ABK Kandang" in str(p) for p in df_karyawan["jenis_produk"].tolist())
 
-            if sistem_gaji == "Borongan" and not is_brondong:
+            # GP Snack (Khusus Borongan Snack)
+            if sistem_gaji == "Borongan" and not is_brondong and not is_abk:
                 gp_snack = total_hari_kerja * 10000
             else:
                 gp_snack = 0
 
+            # Kasbon
             if not df_k_filtered.empty:
                 total_kasbon = df_k_filtered[df_k_filtered["nama_karyawan"] == pilih_karyawan]["nominal"].sum()
             else:
                 total_kasbon = 0
 
-            target_hk = get_hari_kerja_efektif(tahun, bulan)
-            if total_hari_kerja >= target_hk:
-                bonus_absen = 100000
-            elif total_hari_kerja == target_hk - 1:
-                bonus_absen = 30000
+            # Target Hari Kerja & Bonus Kehadiran
+            total_hari_kalender = calendar.monthrange(tahun, bulan)[1]
+            if is_abk:
+                target_hk = max(total_hari_kalender - 2, 1)
+                bonus_absen = 0  # ABK Kandang Tanpa Bonus Kehadiran
             else:
-                bonus_absen = 0
+                target_hk = get_hari_kerja_efektif(tahun, bulan)
+                if total_hari_kerja >= target_hk:
+                    bonus_absen = 100000
+                elif total_hari_kerja == target_hk - 1:
+                    bonus_absen = 30000
+                else:
+                    bonus_absen = 0
 
-            gaji_kotor_total = gaji_borongan + gp_snack + bonus_absen
+            gaji_kotor_total = gaji_utama + gp_snack + bonus_absen
             gaji_bersih = gaji_kotor_total - total_kasbon
             
             nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
@@ -783,7 +793,7 @@ elif menu == "Cetak Struk Termal":
                 Absensi : {total_hari_kerja}/{target_hk} Hari Masuk<br>
                 Hasil   : {val_hasil}<br>
                 --------------------------------<br>
-                Hasil Borongan : Rp {gaji_borongan:,.0f}<br>
+                Gaji Utama     : Rp {gaji_utama:,.0f}<br>
                 GP Snack (10k) : Rp {gp_snack:,.0f}<br>
                 Bonus Absen    : Rp {bonus_absen:,.0f}<br>
                 --------------------------------<br>
