@@ -439,7 +439,7 @@ elif menu == "3. Kasbon Karyawan":
                 st.info("Belum ada riwayat transaksi kasbon.")
 
 # ----------------------------------------------------
-# MENU 4 : MASTER KARYAWAN 
+# MENU 4: MASTER KARYAWAN 
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
@@ -463,26 +463,12 @@ elif menu == "Master Karyawan":
                     "Produksi Snack", 
                     "Admin Pabrik", 
                     "Packing Online",
-                    "Borongan Snack",
-                    "Borongan Brondong"
+                    "Pembungkus / Borongan"
                 ]
                 divisi = st.selectbox("Divisi / Penempatan", list_divisi, key="sb_divisi_add")
                 
             with col_d2:
                 jabatan = st.selectbox("Jabatan", ["Anggota", "Kepala Regu", "Admin", "Lainnya"], key="sb_jabatan_add")
-
-            # Logika Otomatisasi Sistem Gaji
-            if divisi in ["Borongan Snack", "Borongan Brondong"]:
-                opts_gaji = ["Borongan", "Harian"]
-            else:
-                opts_gaji = ["Harian", "Borongan"]
-
-            sistem_gaji = st.selectbox(
-                "Sistem Gaji", 
-                opts_gaji, 
-                key="sb_sistem_gaji_add",
-                help="Gaji ABK Kandang dikategorikan sebagai Harian (Prorata Rp 2.377.000 / (Hari Bulan - 2))."
-            )
 
             btn_simpan_karyawan = st.form_submit_button("💾 Simpan Karyawan Baru", type="primary")
 
@@ -491,17 +477,17 @@ elif menu == "Master Karyawan":
                     st.warning("⚠️ Nama karyawan wajib diisi!")
                 else:
                     payload = {
-                        "nama_karyawan": nama,
+                        "nama_karyawan": nama.title(),
                         "divisi": divisi,
-                        "jabatan": jabatan,
-                        "sistem_gaji": sistem_gaji
+                        "jabatan": jabatan
                     }
                     try:
-                        supabase.table("Karyawan").insert(payload).execute()
-                        st.success(f"✅ Karyawan **{nama}** ({divisi}) berhasil didaftarkan!")
+                        # Menggunakan nama tabel MasterKaryawan sesuai skema database Anda
+                        supabase.table("MasterKaryawan").insert(payload).execute()
+                        st.success(f"✅ Karyawan **{nama.title()}** ({divisi}) berhasil didaftarkan!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Gagal menyimpan data ke database Supabase: {e}")
+                        st.error(f"Gagal menyimpan data ke Supabase: {e}")
 
     # ----------------------------------------------------
     # TAB 2: DAFTAR & HAPUS KARYAWAN
@@ -509,28 +495,22 @@ elif menu == "Master Karyawan":
     with tab_lihat:
         st.markdown("##### Daftar Karyawan Terdaftar")
         
-        # Penanganan Aman Fetch Data Karyawan
-        karyawan_list = []
-        try:
-            raw_data = get_karyawan_list()
-            if raw_data and isinstance(raw_data, list):
-                karyawan_list = raw_data
-        except Exception as err:
-            st.error(f"Gagal memuat daftar karyawan dari Supabase: {err}")
+        # Mengambil data menggunakan fungsi bawaan get_karyawan_list()
+        karyawan_list = get_karyawan_list()
 
         if karyawan_list:
             df_karyawan = pd.DataFrame(karyawan_list)
             
-            # Memastikan kolom-kolom utama ada
-            cols_to_display = [c for c in ["nama_karyawan", "divisi", "jabatan", "sistem_gaji"] if c in df_karyawan.columns]
+            # Filter kolom yang akan ditampilkan
+            cols_to_display = [c for c in ["id", "nama_karyawan", "divisi", "jabatan"] if c in df_karyawan.columns]
             
             st.dataframe(
                 df_karyawan[cols_to_display] if cols_to_display else df_karyawan,
                 column_config={
+                    "id": "ID",
                     "nama_karyawan": "Nama Karyawan",
                     "divisi": "Divisi / Penempatan",
-                    "jabatan": "Jabatan",
-                    "sistem_gaji": "Sistem Gaji"
+                    "jabatan": "Jabatan"
                 },
                 use_container_width=True
             )
@@ -538,7 +518,10 @@ elif menu == "Master Karyawan":
             # Form Hapus Karyawan
             st.divider()
             with st.expander("🗑️ Hapus Data Karyawan"):
-                dict_hapus = {k.get("nama_karyawan", f"ID {k.get('id')}"): k.get("id") for k in karyawan_list if k.get("nama_karyawan")}
+                dict_hapus = {
+                    f"{k.get('nama_karyawan', 'Tanpa Nama')} ({k.get('divisi', '-')})": k.get("id") 
+                    for k in karyawan_list if k.get("id")
+                }
                 
                 if dict_hapus:
                     nama_hapus = st.selectbox("Pilih Karyawan yang Akan Dihapus", list(dict_hapus.keys()), key="sb_hapus_karyawan")
@@ -546,8 +529,8 @@ elif menu == "Master Karyawan":
                     if st.button("Hapus Permanen", type="secondary", key="btn_hapus_karyawan"):
                         id_hapus = dict_hapus[nama_hapus]
                         try:
-                            supabase.table("Karyawan").delete().eq("id", id_hapus).execute()
-                            st.success(f"✅ Data {nama_hapus} berhasil dihapus.")
+                            supabase.table("MasterKaryawan").delete().eq("id", id_hapus).execute()
+                            st.success(f"✅ Data karyawan berhasil dihapus.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal menghapus data dari Supabase: {e}")
