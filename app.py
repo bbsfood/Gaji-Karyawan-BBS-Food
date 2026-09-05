@@ -439,7 +439,7 @@ elif menu == "3. Kasbon Karyawan":
                 st.info("Belum ada riwayat transaksi kasbon.")
 
 # ----------------------------------------------------
-# MENU: MASTER KARYAWAN (SAFE & BLANK-PROOF)
+# MENU 4 : MASTER KARYAWAN 
 # ----------------------------------------------------
 elif menu == "Master Karyawan":
     st.subheader("👥 Kelola Master Data Karyawan")
@@ -555,7 +555,6 @@ elif menu == "Master Karyawan":
                     st.write("Tidak ada data karyawan yang valid untuk dihapus.")
         else:
             st.info("ℹ️ Belum ada data karyawan terdaftar di database.")
-            
 # ----------------------------------------------------
 # MENU 5: DATA & EDIT LOG
 # ----------------------------------------------------
