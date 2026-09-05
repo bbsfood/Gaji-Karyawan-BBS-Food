@@ -456,32 +456,30 @@ elif menu == "Master Karyawan":
             
             col_d1, col_d2 = st.columns(2)
             with col_d1:
-                # Menambahkan ABK Kandang ke pilihan Divisi
-                divisi = st.selectbox(
-                    "Divisi / Penempatan", 
-                    [
-                        "ABK Kandang",
-                        "Produksi Brondong", 
-                        "Produksi Snack", 
-                        "Admin Pabrik", 
-                        "Packing Online",
-                        "Borongan Snack",
-                        "Borongan Brondong"
-                    ]
-                )
+                list_divisi = [
+                    "ABK Kandang",
+                    "Produksi Brondong", 
+                    "Produksi Snack", 
+                    "Admin Pabrik", 
+                    "Packing Online",
+                    "Borongan Snack",
+                    "Borongan Brondong"
+                ]
+                divisi = st.selectbox("Divisi / Penempatan", list_divisi)
+                
             with col_d2:
                 jabatan = st.selectbox("Jabatan", ["Anggota", "Kepala Regu", "Admin", "Lainnya"])
 
             # Logika Otomatisasi Sistem Gaji Berdasarkan Divisi
             if divisi in ["Borongan Snack", "Borongan Brondong"]:
-                sistem_gaji_default = "Borongan"
+                idx_default = 1  # Borongan
             else:
-                sistem_gaji_default = "Harian"
+                idx_default = 0  # Harian (termasuk ABK Kandang)
 
             sistem_gaji = st.selectbox(
                 "Sistem Gaji", 
                 ["Harian", "Borongan"], 
-                index=0 if sistem_gaji_default == "Harian" else 1,
+                index=idx_default,
                 help="Gaji ABK Kandang dikategorikan sebagai Harian (Prorata Rp 2.377.000 / (Hari Bulan - 2))."
             )
 
@@ -542,6 +540,7 @@ elif menu == "Master Karyawan":
                         st.error(f"Gagal menghapus data: {e}")
         else:
             st.info("Belum ada data karyawan terdaftar.")
+            
 # ----------------------------------------------------
 # MENU 5: DATA & EDIT LOG
 # ----------------------------------------------------
