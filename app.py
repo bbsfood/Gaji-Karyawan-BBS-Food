@@ -532,7 +532,7 @@ elif menu == "5. Data & Edit Log":
                         st.rerun()
 
 # ----------------------------------------------------
-# MENU 6: REKAP & EKSPOR EXCEL
+# MENU 6: REKAP & EKSPOR EXCEL (DENGAN BONUS KEHADIRAN)
 # ----------------------------------------------------
 elif menu == "6. Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -543,6 +543,10 @@ elif menu == "6. Rekap & Ekspor Excel":
     with col_t:
         tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
         
+    # Hitung Hari Kerja Efektif Pabrik pada Bulan & Tahun Terpilih
+    hari_kerja_efektif = get_hari_kerja_efektif(tahun, bulan)
+    st.info(f"📅 Total Hari Kerja Efektif Bulan {bulan}/{tahun}: **{hari_kerja_efektif} Hari Kerja**")
+
     res = supabase.table("LogHarian").select("*").execute()
     res_kasbon = supabase.table("Kasbon").select("*").execute()
     
@@ -563,15 +567,37 @@ elif menu == "6. Rekap & Ekspor Excel":
             
             tab_gaji, tab_prod = st.tabs(["💵 Rekap Gaji Karyawan", "📦 Rekap Produksi Barang (Harian & Bulanan)"])
             
-            # TAB 1: REKAP GAJI
+            # ----------------------------------------------------
+            # TAB 1: REKAP GAJI + BONUS KEHADIRAN OTOMATIS
+            # ----------------------------------------------------
             with tab_gaji:
                 st.markdown("### 👥 Rekapitulasi Gaji Karyawan")
+                
                 rekap_gaji = df_filtered.groupby(["nama_karyawan", "sistem_gaji"]).agg(
                     total_absensi=('tanggal', 'nunique'),
                     total_hasil=('jumlah_borongan', 'sum'),
-                    gaji_kotor=('total_gaji', 'sum')
+                    gaji_pokok_borongan=('total_gaji', 'sum')
                 ).reset_index()
                 
+                # FUNGSI HITUNG BONUS KEHADIRAN PER KARYAWAN
+                def hitung_bonus_kehadiran(row):
+                    masuk = row["total_absensi"]
+                    target_hk = hari_kerja_efektif
+                    
+                    if masuk >= target_hk:
+                        return 100000  # Full masuk = Rp 100.000
+                    elif masuk == target_hk - 1:
+                        return 30000   # Bolos/Izin 1 hari = Rp 30.000
+                    else:
+                        return 0       # Bolos/Izin >= 2 hari = Rp 0
+
+                # Hitung Bonus Kehadiran
+                rekap_gaji["bonus_kehadiran"] = rekap_gaji.apply(hitung_bonus_kehadiran, axis=1)
+                
+                # Hitung Gaji Kotor (Gaji Harian/Borongan + Bonus Kehadiran)
+                rekap_gaji["gaji_kotor"] = rekap_gaji["gaji_pokok_borongan"] + rekap_gaji["bonus_kehadiran"]
+                
+                # Penggabungan Kasbon
                 if not df_k_filtered.empty:
                     rekap_bon = df_k_filtered.groupby("nama_karyawan")["nominal"].sum().reset_index()
                     rekap_bon.rename(columns={"nominal": "total_kasbon"}, inplace=True)
@@ -582,12 +608,36 @@ elif menu == "6. Rekap & Ekspor Excel":
                 rekap_gaji["total_kasbon"] = rekap_gaji["total_kasbon"].fillna(0)
                 rekap_gaji["gaji_bersih"] = rekap_gaji["gaji_kotor"] - rekap_gaji["total_kasbon"]
                 
+                # TAMPILKAN TABEL DENGAN KOLOM BONUS KEHADIRAN
                 st.dataframe(
-                    rekap_gaji[["nama_karyawan", "sistem_gaji", "total_absensi", "total_hasil", "gaji_kotor", "total_kasbon", "gaji_bersih"]],
+                    rekap_gaji[[
+                        "nama_karyawan", 
+                        "sistem_gaji", 
+                        "total_absensi", 
+                        "total_hasil", 
+                        "gaji_pokok_borongan", 
+                        "bonus_kehadiran", 
+                        "gaji_kotor", 
+                        "total_kasbon", 
+                        "gaji_bersih"
+                    ]],
+                    column_config={
+                        "nama_karyawan": "Nama Karyawan",
+                        "sistem_gaji": "Sistem Gaji",
+                        "total_absensi": "Hari Masuk",
+                        "total_hasil": "Total Hasil/Ball",
+                        "gaji_pokok_borongan": st.column_config.NumberColumn("Gaji Utama", format="Rp %d"),
+                        "bonus_kehadiran": st.column_config.NumberColumn("Bonus Kehadiran", format="Rp %d"),
+                        "gaji_kotor": st.column_config.NumberColumn("Gaji Kotor", format="Rp %d"),
+                        "total_kasbon": st.column_config.NumberColumn("Kasbon", format="Rp %d"),
+                        "gaji_bersih": st.column_config.NumberColumn("Gaji Bersih", format="Rp %d")
+                    },
                     use_container_width=True
                 )
 
+            # ----------------------------------------------------
             # TAB 2: REKAP PRODUKSI
+            # ----------------------------------------------------
             with tab_prod:
                 st.markdown("### 📦 Rekap Rincian Hasil Produksi per Barang")
                 df_prod = df_filtered[df_filtered["sistem_gaji"] == "Borongan"].copy()
@@ -609,7 +659,9 @@ elif menu == "6. Rekap & Ekspor Excel":
                     st.info("Belum ada data pengerjaan borongan produk pada bulan ini.")
                     pivot_produksi = pd.DataFrame()
 
+            # ----------------------------------------------------
             # EKSPOR KE EXCEL
+            # ----------------------------------------------------
             st.divider()
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -635,7 +687,7 @@ elif menu == "6. Rekap & Ekspor Excel":
 # ----------------------------------------------------
 elif menu == "7. Cetak Struk Termal":
     st.subheader("🖨️ Cetak Struk Rekap Gaji Bulanan (58mm)")
-    
+
     col_b, col_t = st.columns(2)
     with col_b:
         bulan = st.selectbox("Pilih Bulan", range(1, 13), index=datetime.today().month - 1)
@@ -664,22 +716,39 @@ elif menu == "7. Cetak Struk Termal":
             df_karyawan = df_filtered[df_filtered["nama_karyawan"] == pilih_karyawan]
             sistem_gaji = df_karyawan["sistem_gaji"].iloc[0]
             total_qty = df_karyawan["jumlah_borongan"].sum()
-            gaji_kotor = df_karyawan["total_gaji"].sum()
+            gaji_pokok_borongan = df_karyawan["total_gaji"].sum()
             total_hari_kerja = df_karyawan["tanggal"].nunique()
             
+            # Hitung Kasbon Karyawan
             if not df_k_filtered.empty:
                 total_kasbon = df_k_filtered[df_k_filtered["nama_karyawan"] == pilih_karyawan]["nominal"].sum()
             else:
                 total_kasbon = 0
-                
-            gaji_bersih = gaji_kotor - total_kasbon
+
+            # ----------------------------------------------------
+            # PERHITUNGAN BONUS KEHADIRAN (HARI KERJA EFEKTIF)
+            # ----------------------------------------------------
+            target_hk = get_hari_kerja_efektif(tahun, bulan)
+            
+            if total_hari_kerja >= target_hk:
+                bonus_absen = 100000
+            elif total_hari_kerja == target_hk - 1:
+                bonus_absen = 30000
+            else:
+                bonus_absen = 0
+
+            # Hitung Total Gaji Kotor & Gaji Bersih
+            gaji_kotor_total = gaji_pokok_borongan + bonus_absen
+            gaji_bersih = gaji_kotor_total - total_kasbon
             
             nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
                           "Juli", "Agustus", "September", "Oktober", "November", "Desember"][bulan - 1]
             
-            label_hasil = "Total Ball" if sistem_gaji == "Borongan" else "Hari Masuk"
             val_hasil = f"{total_qty:g} Ball" if sistem_gaji == "Borongan" else f"{total_hari_kerja} Hari"
 
+            # ----------------------------------------------------
+            # TAMPILAN STRUK TERMAL (HTML)
+            # ----------------------------------------------------
             struk_html = f"""
             <div class="thermal-receipt">
                 <center>
@@ -690,18 +759,21 @@ elif menu == "7. Cetak Struk Termal":
                     Periode: {nama_bulan} {tahun}<br>
                     --------------------------------
                 </center>
-                Nama   : {pilih_karyawan}<br>
-                Sistem : {sistem_gaji}<br>
-                Absensi: {total_hari_kerja} Hari Masuk<br>
-                Hasil  : {val_hasil}<br>
+                Nama    : {pilih_karyawan}<br>
+                Sistem  : {sistem_gaji}<br>
+                Absensi : {total_hari_kerja}/{target_hk} Hari Masuk<br>
+                Hasil   : {val_hasil}<br>
                 --------------------------------<br>
-                Gaji Kotor   : Rp {gaji_kotor:,.0f}<br>
-                Kasbon/Bon   : Rp {total_kasbon:,.0f}<br>
+                Gaji Utama  : Rp {gaji_pokok_borongan:,.0f}<br>
+                Bonus Absen : Rp {bonus_absen:,.0f}<br>
+                Total Kotor : Rp {gaji_kotor_total:,.0f}<br>
+                Kasbon/Bon  : Rp {total_kasbon:,.0f}<br>
                 --------------------------------<br>
-                <strong>GAJI BERSIH  : Rp {gaji_bersih:,.0f}</strong><br>
+                <strong>GAJI BERSIH : Rp {gaji_bersih:,.0f}</strong><br>
                 --------------------------------<br>
                 <center>
-                    <i>~ Terima Kasih ~</i>
+                    <i>~ Slip Gaji bersifat rahasia,
+                    apabila ada pertanyaan bisa hubungi Admin~</i>
                 </center>
             </div>
             """
