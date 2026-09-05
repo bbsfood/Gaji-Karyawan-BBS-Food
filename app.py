@@ -535,7 +535,7 @@ elif menu == "Data & Edit Log":
         st.error(f"Gagal memuat log data: {e}")
 
 # ----------------------------------------------------
-# MENU 6: REKAP & EKSPOR EXCEL
+# MENU 6: REKAP & EKSPOR EXCEL (WITH ABK KANDANG PRORATA)
 # ----------------------------------------------------
 elif menu == "Rekap & Ekspor Excel":
     st.subheader("📊 Rekapitulasi Gaji & Laporan Produksi Pabrik Bulanan")
@@ -547,7 +547,7 @@ elif menu == "Rekap & Ekspor Excel":
         tahun = st.number_input("Pilih Tahun", value=datetime.today().year, step=1)
         
     hari_kerja_efektif = get_hari_kerja_efektif(tahun, bulan)
-    st.info(f"📅 Total Hari Kerja Efektif Bulan {bulan}/{tahun}: **{hari_kerja_efektif} Hari Kerja**")
+    st.info(f"📅 Total Hari Kerja Efektif Pabrik Bulan {bulan}/{tahun}: **{hari_kerja_efektif} Hari Kerja**")
 
     res = supabase.table("LogHarian").select("*").execute()
     res_kasbon = supabase.table("Kasbon").select("*").execute()
@@ -571,29 +571,41 @@ elif menu == "Rekap & Ekspor Excel":
             with tab_gaji:
                 st.markdown("### 👥 Rekapitulasi Gaji Karyawan")
                 
-                def cek_is_brondong(group):
+                # Cek tipe divisi dari log
+                def cek_divisi_info(group):
                     produk_list = group["jenis_produk"].astype(str).tolist()
-                    return any("Brondong" in p for p in produk_list)
+                    is_brondong = any("Brondong" in p for p in produk_list)
+                    is_abk = any("ABK Kandang" in p for p in produk_list)
+                    return is_brondong, is_abk
 
                 rekap_gaji = df_filtered.groupby(["nama_karyawan", "sistem_gaji"]).agg(
                     total_absensi=('tanggal', 'nunique'),
                     total_hasil=('jumlah_borongan', 'sum'),
-                    gaji_borongan=('total_gaji', 'sum')
+                    gaji_utama=('total_gaji', 'sum')
                 ).reset_index()
 
                 list_is_brondong = []
+                list_is_abk = []
                 for _, row in rekap_gaji.iterrows():
                     sub_df = df_filtered[df_filtered["nama_karyawan"] == row["nama_karyawan"]]
-                    list_is_brondong.append(cek_is_brondong(sub_df))
+                    brondong_flag, abk_flag = cek_divisi_info(sub_df)
+                    list_is_brondong.append(brondong_flag)
+                    list_is_abk.append(abk_flag)
                 
                 rekap_gaji["is_brondong"] = list_is_brondong
+                rekap_gaji["is_abk"] = list_is_abk
 
+                # HITUNG GAJI POKOK HARIAN (Khusus Borongan Snack Non-Brondong = Rp 10.000 / hari)
                 def hitung_gaji_pokok_harian(row):
-                    if row["sistem_gaji"] == "Borongan" and not row["is_brondong"]:
+                    if row["sistem_gaji"] == "Borongan" and not row["is_brondong"] and not row["is_abk"]:
                         return row["total_absensi"] * 10000
                     return 0
 
+                # HITUNG BONUS KEHADIRAN (ABK Kandang TIDAK DAPAT BONUS KEHADIRAN)
                 def hitung_bonus_kehadiran(row):
+                    if row["is_abk"]:
+                        return 0  # ABK Kandang Tanpa Bonus Kehadiran
+                    
                     masuk = row["total_absensi"]
                     target_hk = hari_kerja_efektif
                     if masuk >= target_hk:
@@ -607,7 +619,7 @@ elif menu == "Rekap & Ekspor Excel":
                 rekap_gaji["bonus_kehadiran"] = rekap_gaji.apply(hitung_bonus_kehadiran, axis=1)
                 
                 rekap_gaji["gaji_kotor"] = (
-                    rekap_gaji["gaji_borongan"] + 
+                    rekap_gaji["gaji_utama"] + 
                     rekap_gaji["gaji_pokok_snack"] + 
                     rekap_gaji["bonus_kehadiran"]
                 )
@@ -628,13 +640,25 @@ elif menu == "Rekap & Ekspor Excel":
                         "sistem_gaji", 
                         "total_absensi", 
                         "total_hasil", 
-                        "gaji_borongan", 
+                        "gaji_utama", 
                         "gaji_pokok_snack",
                         "bonus_kehadiran", 
                         "gaji_kotor", 
                         "total_kasbon", 
                         "gaji_bersih"
                     ]],
+                    column_config={
+                        "nama_karyawan": "Nama Karyawan",
+                        "sistem_gaji": "Sistem Gaji",
+                        "total_absensi": "Hari Masuk",
+                        "total_hasil": "Total Hasil/Ball",
+                        "gaji_utama": st.column_config.NumberColumn("Gaji Utama / Prorata", format="Rp %d"),
+                        "gaji_pokok_snack": st.column_config.NumberColumn("GP Snack (10k)", format="Rp %d"),
+                        "bonus_kehadiran": st.column_config.NumberColumn("Bonus Kehadiran", format="Rp %d"),
+                        "gaji_kotor": st.column_config.NumberColumn("Gaji Kotor Total", format="Rp %d"),
+                        "total_kasbon": st.column_config.NumberColumn("Kasbon", format="Rp %d"),
+                        "gaji_bersih": st.column_config.NumberColumn("Gaji Bersih", format="Rp %d")
+                    },
                     use_container_width=True
                 )
 
