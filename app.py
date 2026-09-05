@@ -223,7 +223,7 @@ if menu == "Input Bungkusan Borongan":
                     st.rerun()
 
 # ----------------------------------------------------
-# MENU 2: PRESENSI HARIAN & NON-BORONGAN
+# MENU 2: PRESENSI HARIAN & NON-BORONGAN 
 # ----------------------------------------------------
 elif menu == "Presensi Harian & Non-Borongan":
     st.subheader("🗓️ Input Presensi Harian & Non-Borongan")
@@ -250,10 +250,13 @@ elif menu == "Presensi Harian & Non-Borongan":
         hari_efektif_pabrik = get_hari_kerja_efektif(thn_cur, bln_cur)
         total_hari_kalender = calendar.monthrange(thn_cur, bln_cur)[1]
 
+        # ----------------------------------------------------
+        # PERHITUNGAN TARIF HARIAN BERDASARKAN DIVISI
+        # ----------------------------------------------------
         if divisi == "ABK Kandang":
             target_hk_abk = max(total_hari_kalender - 2, 1)
             gaji_standar_harian = 2377000 / target_hk_abk
-            ket_hari_kerja = f"Target ABK Kandang: {target_hk_abk} Hari ({total_hari_kalender}-2)"
+            ket_hari_kerja = f"Target Penuh ABK: {target_hk_abk} Hari ({total_hari_kalender}-2)"
         elif divisi == "Admin Pabrik":
             gaji_standar_harian = GAJI_HARIAN_TETAP_ADMIN
             ket_hari_kerja = f"Hari Kerja Pabrik: {hari_efektif_pabrik} Hari"
@@ -274,6 +277,7 @@ elif menu == "Presensi Harian & Non-Borongan":
 
         st.divider()
 
+        # LOGIKA BRONDONG
         if "brondong" in divisi.lower():
             st.markdown("##### 🎯 Target Produksi Brondong Harian (Acuan: 50 Ball)")
             col_t1, col_t2 = st.columns(2)
@@ -335,7 +339,6 @@ elif menu == "Presensi Harian & Non-Borongan":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Gagal menyimpan data: {e}")
-
 # ----------------------------------------------------
 # MENU 3: KASBON KARYAWAN
 # ----------------------------------------------------
