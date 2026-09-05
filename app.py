@@ -72,7 +72,7 @@ DAFTAR_PRODUK = [
     "Seblak Mix", "Jengkol", "Kedelai Ori", "Kedelai Pedas", 
     "K. Tongkol Asin", "K. Tongkol Pedas", "Campuran (Mix)", 
     "Marneng Asin", "Marneng Pedas", "Emping Balado Asin", 
-    "Emping Pedas Manis", "Mie Enak", "K. Jablay", "Brondong", "Kedelai Mesin","Rambut Nenek", "K.Manggar"
+    "Emping Pedas Manis", "Mie Enak", "K. Jablay", "Brondong", "Kedelai Mesin","Rambut Nenek", "K.Manggar", "Usus Pedas", "Usus Ori"
 ]
 UKURAN_BAL = ["Isi 10", "Isi 12"]
 
