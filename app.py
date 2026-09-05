@@ -235,7 +235,7 @@ if menu == "1. Input Bungkusan Borongan":
                     st.rerun()
 
 # ----------------------------------------------------
-# MENU 2: INPUT ABSENSI & GAJI HARIAN/BULANAN (DENGAN TARGET BRONDONG)
+# MENU 2: INPUT ABSENSI & GAJI HARIAN/BULANAN (PROPORSIONAL BRONDONG)
 # ----------------------------------------------------
 elif menu == "2. Input Absensi & Gaji Harian/Bulanan":
     st.subheader("🗓️ Input Absensi & Gaji Harian (Target Produksi & Status Kehadiran)")
@@ -248,7 +248,7 @@ elif menu == "2. Input Absensi & Gaji Harian/Bulanan":
         with col_a1:
             tgl_absen = st.date_input("Tanggal Masuk Kerja", value=datetime.today(), key="abs_tgl")
             
-            # Filter Karyawan Non-Borongan / Harian
+            # Filter Karyawan Harian / Bulanan
             list_karyawan_harian = [
                 k for k in karyawan_data 
                 if k.get("divisi") in ["Produksi Brondong", "Produksi Snack", "Admin Pabrik", "Packing Online"]
@@ -289,47 +289,47 @@ elif menu == "2. Input Absensi & Gaji Harian/Bulanan":
 
         st.divider()
 
-        # LOGIKA KHUSUS PRODUKSI BRONDONG (TARGET 50 BALL)
+        # LOGIKA KHUSUS PRODUKSI BRONDONG (PROPORSIONAL HASIL / 50 BAL)
         gaji_akhir = gaji_setelah_absensi
         catatan_target = ""
         
         if divisi == "Produksi Brondong":
-            st.markdown("##### 🎯 Target Produksi Brondong Harian (Standar: 50 Ball)")
+            st.markdown("##### 🎯 Target Produksi Brondong Harian (Acuan Standard: 50 Ball)")
             col_t1, col_t2 = st.columns(2)
             
             with col_t1:
-                target_standar = 50
+                target_standar = 50.0
                 hasil_actual = st.number_input("Capaian Hasil Produksi (Ball)", min_value=0.0, value=50.0, step=1.0)
+            
+            # Perhitungan Proporsional Murni (Hasil Actual / 50 * Gaji Harian)
+            gaji_akhir = (hasil_actual / target_standar) * gaji_setelah_absensi
+            tarif_per_bal = gaji_setelah_absensi / target_standar
             
             with col_t2:
                 if hasil_actual < target_standar:
-                    # Skema Potong Gaji Proporsional jika kurang dari target
-                    rasio = hasil_actual / target_standar
-                    gaji_akhir = gaji_setelah_absensi * rasio
-                    catatan_target = f"Kurang Target ({hasil_actual:g}/50 Ball - Potong Gaji {((1-rasio)*100):.1f}%)"
-                    st.warning(f"⚠️ Hasil di bawah target! Gaji dipotong proporsional menjadi: **Rp {gaji_akhir:,.0f}**")
+                    selisih_bal = target_standar - hasil_actual
+                    potongan_rp = selisih_bal * tarif_per_bal
+                    catatan_target = f"Kurang {selisih_bal:g} Bal ({hasil_actual:g}/50) | Potong Rp {potongan_rp:,.0f}"
+                    st.warning(f"⚠️ Kurang target {selisih_bal:g} bal. Gaji dipotong Rp {potongan_rp:,.0f} ({hasil_actual:g}/50 x Rp {gaji_setelah_absensi:,.0f})")
                 
                 elif hasil_actual > target_standar:
-                    # Skema Bonus Kelebihan Produksi
-                    kelebihan = hasil_actual - target_standar
-                    bonus_per_ball = 2000  # Nominal bonus per kelebihan ball (dapat disesuaikan)
-                    bonus_total = kelebihan * bonus_per_ball
-                    gaji_akhir = gaji_setelah_absensi + bonus_total
-                    catatan_target = f"Lebih Target (+{kelebihan:g} Ball - Bonus Rp {bonus_total:,.0f})"
-                    st.success(f"🎉 Melebihi target (+{kelebihan:g} Ball)! Diberikan tambahan insentif: **Rp {gaji_akhir:,.0f}**")
+                    bonus_bal = hasil_actual - target_standar
+                    bonus_rp = bonus_bal * tarif_per_bal
+                    catatan_target = f"Bonus +{bonus_bal:g} Bal ({hasil_actual:g}/50) | Bonus Rp {bonus_rp:,.0f}"
+                    st.success(f"🎉 Lebih target +{bonus_bal:g} bal. Diberikan bonus Rp {bonus_rp:,.0f} ({hasil_actual:g}/50 x Rp {gaji_setelah_absensi:,.0f})")
                 
                 else:
-                    catatan_target = "Target Tercapai (50 Ball)"
-                    st.info("✅ Target 50 Ball tercapai penuh.")
+                    catatan_target = "Target Pas (50 Bal)"
+                    st.info("✅ Target 50 Ball tercapai pas (100%).")
 
         with col_a2:
             st.markdown("##### Rincian Perhitungan Gaji:")
             st.info(f"""
             * **Divisi / Jabatan**: {divisi} ({jabatan})
             * **Status Hadir**: {status_hadir}
-            * **Base Gaji Standar**: Rp {gaji_standar_harian:,.0f} / Hari
+            * **Gaji Acuan Harian**: Rp {gaji_setelah_absensi:,.0f}
             * **Status Target**: {catatan_target if divisi == "Produksi Brondong" else "N/A"}
-            * **Total Gaji Hari Ini**: **Rp {gaji_akhir:,.0f}**
+            * **Total Diterima Hari Ini**: **Rp {gaji_akhir:,.0f}**
             """)
 
         with st.form("form_simpan_absensi_brondong"):
@@ -352,15 +352,18 @@ elif menu == "2. Input Absensi & Gaji Harian/Bulanan":
                     "tanggal": str(tgl_absen),
                     "sistem_gaji": "Harian",
                     "jenis_produk": f"Absensi {divisi}",
-                    "ukuran_bal": ket_simpan, # Disimpan ke kolom ukuran_bal / keterangan
-                    "jumlah_borongan": 1.0 if faktor_kehadiran == 1.0 else 0.5,
+                    "ukuran_bal": ket_simpan,
+                    "jumlah_borongan": float(hasil_actual) if divisi == "Produksi Brondong" else (1.0 if faktor_kehadiran == 1.0 else 0.5),
                     "nominal_satuan": int(override_gaji),
                     "total_gaji": float(override_gaji)
                 }
                 
-                supabase.table("LogHarian").insert(payload_absensi).execute()
-                st.success(f"✅ Gaji Rp {override_gaji:,.0f} untuk {pilih_nama_absen} berhasil disimpan!")
-                st.rerun()
+                try:
+                    supabase.table("LogHarian").insert(payload_absensi).execute()
+                    st.success(f"✅ Gaji Rp {override_gaji:,.0f} untuk {pilih_nama_absen} berhasil disimpan!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal menyimpan ke database: {e}")
 
 # ----------------------------------------------------          
 # MENU 3: KASBON KARYAWAN
